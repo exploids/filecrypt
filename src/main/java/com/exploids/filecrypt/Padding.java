@@ -7,15 +7,26 @@ public enum Padding {
     /**
      * NoPadding.
      */
-    NO,
+    NO("NoPadding"),
 
     /**
      * PKCS7Padding.
      */
-    PKCS7,
+    PKCS7("PKCS7Padding"),
 
     /**
      * ZeroBytePadding.
      */
-    ZERO_BYTE,
+    ZERO_BYTE("ZeroBytePadding");
+
+    private final String name;
+
+    Padding(String name) {
+        this.name = name;
+    }
+
+    @Override
+    public String toString() {
+        return name;
+    }
 }

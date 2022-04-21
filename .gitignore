@@ -9,3 +9,10 @@ buildNumber.properties
 .mvn/timing.properties
 # https://github.com/takari/maven-wrapper#usage-without-binary-jar
 .mvn/wrapper/maven-wrapper.jar
+helloworld-decoded.txt
+helloworld.key
+helloworld.tar
+pi-billion-decoded.txt
+pi-billion.key
+pi-billion.tar
+pi-billion.txt
