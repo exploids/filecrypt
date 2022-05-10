@@ -1,30 +1,48 @@
 package com.exploids.filecrypt;
 
-import java.util.Arrays;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import picocli.CommandLine.Option;
+
+import java.nio.ByteBuffer;
 
 /**
  * @author Luca Selinski
  */
 public class Metadata {
+    public Metadata() {
+    }
+
+    public Metadata(Algorithm algorithm, BlockMode blockMode, Padding padding, ByteBuffer initializationVector) {
+        this.algorithm = algorithm;
+        this.blockMode = blockMode;
+        this.padding = padding;
+        this.initializationVector = initializationVector;
+    }
+
     /**
      * The algorithm.
      */
+    @Option(names = {"-a", "--algorithm"})
     private Algorithm algorithm;
 
     /**
      * The block mode.
      */
+    @Option(names = {"-b", "--block-mode"})
     private BlockMode blockMode;
 
     /**
      * The padding.
      */
+    @Option(names = {"-d", "--padding"})
     private Padding padding;
 
     /**
      * The initialization vector.
      */
-    private byte[] initializationVector;
+    @Option(names = {"--iv", "--initialization-vector"})
+    private ByteBuffer initializationVector;
 
     /**
      * Gets the algorithm of this metadata.
@@ -85,8 +103,9 @@ public class Metadata {
      *
      * @return the initialization vector
      */
+    @JsonSerialize(using = ByteArraySerializer.class)
     public byte[] getInitializationVector() {
-        return initializationVector;
+        return initializationVector == null ? null : initializationVector.array();
     }
 
     /**
@@ -94,8 +113,24 @@ public class Metadata {
      *
      * @param initializationVector the new initialization vector
      */
+    @JsonDeserialize(using = ByteArrayDeserializer.class)
     public void setInitializationVector(byte[] initializationVector) {
-        this.initializationVector = initializationVector;
+        this.initializationVector = ByteBuffer.wrap(initializationVector);
+    }
+
+    public void setFrom(Metadata other) {
+        if (other.algorithm != null) {
+            algorithm = other.algorithm;
+        }
+        if (other.blockMode != null) {
+            blockMode = other.blockMode;
+        }
+        if (other.padding != null) {
+            padding = other.padding;
+        }
+        if (other.initializationVector != null) {
+            initializationVector = other.initializationVector;
+        }
     }
 
     @Override
@@ -104,7 +139,7 @@ public class Metadata {
                 "algorithm=" + algorithm +
                 ", blockMode=" + blockMode +
                 ", padding=" + padding +
-                ", initializationVector=" + Arrays.toString(initializationVector) +
+                ", initializationVector=" + initializationVector +
                 '}';
     }
 }
