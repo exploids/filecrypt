@@ -1,0 +1,11 @@
+on:
+  push:
+    branches:
+      - main
+jobs:
+  verify:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: LucaFeger/action-maven-cli@master
+        args: verify
