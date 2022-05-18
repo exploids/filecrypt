@@ -7,12 +7,25 @@ import picocli.CommandLine.Option;
 import java.nio.ByteBuffer;
 
 /**
+ * Metadata that describes a concrete cipher.
+ *
  * @author Luca Selinski
  */
 public class Metadata {
+    /**
+     * Creates new empty metadata.
+     */
     public Metadata() {
     }
 
+    /**
+     * Creates metadata from the given values.
+     *
+     * @param algorithm            the algorithm
+     * @param blockMode            the block mode
+     * @param padding              the padding
+     * @param initializationVector the iv
+     */
     public Metadata(Algorithm algorithm, BlockMode blockMode, Padding padding, ByteBuffer initializationVector) {
         this.algorithm = algorithm;
         this.blockMode = blockMode;
@@ -37,6 +50,12 @@ public class Metadata {
      */
     @Option(names = {"-d", "--padding"})
     private Padding padding;
+
+    /**
+     * The padding.
+     */
+    @Option(names = {"--key-size"})
+    private int keySize;
 
     /**
      * The initialization vector.
@@ -99,6 +118,24 @@ public class Metadata {
     }
 
     /**
+     * Gets the key size of this metadata.
+     *
+     * @return the key size
+     */
+    public int getKeySize() {
+        return keySize;
+    }
+
+    /**
+     * Sets the key size if this metadata.
+     *
+     * @param keySize the new key size
+     */
+    public void setKeySize(int keySize) {
+        this.keySize = keySize;
+    }
+
+    /**
      * Gets the initialization vector of this metadata.
      *
      * @return the initialization vector
@@ -118,6 +155,11 @@ public class Metadata {
         this.initializationVector = ByteBuffer.wrap(initializationVector);
     }
 
+    /**
+     * Sets all non-null values from the other metadata.
+     *
+     * @param other the metadata to read from
+     */
     public void setFrom(Metadata other) {
         if (other.algorithm != null) {
             algorithm = other.algorithm;

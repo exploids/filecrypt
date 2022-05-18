@@ -32,16 +32,22 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
+import java.util.List;
 import java.util.ResourceBundle;
 import java.util.concurrent.Callable;
 
 /**
+ * The filecrypt application.
+ *
  * @author Luca Selinski
  */
 @Command(name = "filecrypt", mixinStandardHelpOptions = true, version = "1.0.0", resourceBundle = "com.exploids.filecrypt.Messages")
 public class FileCrypt implements Callable<Integer> {
     private final BouncyCastleProvider provider;
 
+    /**
+     * The resource bundle that contains all the localized messages to output.
+     */
     private final ResourceBundle messages;
 
     private final ObjectMapper mapper;
@@ -56,7 +62,8 @@ public class FileCrypt implements Callable<Integer> {
         messages = ResourceBundle.getBundle("com.exploids.filecrypt.Messages");
         mapper = new ObjectMapper(new YAMLFactory()
                 .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-                .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES));
+                .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES))
+                .setPropertyNamingStrategy(new SpacedNamingStrategy());
         if (CommandLine.Help.Ansi.AUTO.enabled()) {
             standardOutput = new AnsiPrinter(System.out);
             errorOutput = new AnsiPrinter(System.err);
@@ -93,7 +100,7 @@ public class FileCrypt implements Callable<Integer> {
     private Metadata combinedMetadata;
 
     @Command(name = "encrypt", aliases = {"e"}, mixinStandardHelpOptions = true)
-    public Integer encrypt() throws IOException, NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException {
+    public Integer encrypt(@CommandLine.Parameters(index = "0") Path file) throws IOException, NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException {
         prepare();
         String baseName;
         Path base;
@@ -114,26 +121,36 @@ public class FileCrypt implements Callable<Integer> {
             keyFile = base.resolveSibling(baseName + "_enc_key.txt");
         }
         var algorithm = combinedMetadata.getAlgorithm();
-        log("Creating %s key generator…", algorithm);
-        var keyGenerator = KeyGenerator.getInstance(algorithm.toString(), provider);
-        log("Generating key…", algorithm);
-        var key = keyGenerator.generateKey();
-        log("Generated %d bit key", key.getEncoded().length * 8);
-        if (keyFile != null) {
-            log("Writing key to %s…", keyFile.toAbsolutePath());
-            Files.write(keyFile, key.getEncoded());
-            log("Wrote key");
+        SecretKey secretKey;
+        if (key == null) {
+            log("Creating %s key generator…", algorithm);
+            var keyGenerator = KeyGenerator.getInstance(algorithm.toString(), provider);
+            if (combinedMetadata.getKeySize() > 0) {
+                keyGenerator.init(combinedMetadata.getKeySize());
+            }
+            log("Generating key…", algorithm);
+            secretKey = keyGenerator.generateKey();
+            combinedMetadata.setKeySize(secretKey.getEncoded().length * 8);
+            log("Generated %d bit key", secretKey.getEncoded().length * 8);
+            if (keyFile != null) {
+                log("Writing key to %s…", keyFile.toAbsolutePath());
+                Files.writeString(keyFile, Hex.toHexString(secretKey.getEncoded()));
+                log("Wrote key");
+                info("The key has been written to %s", keyFile.toAbsolutePath());
+            }
+        } else {
+            log("Using provided key");
+            secretKey = new SecretKeySpec(key.array(), algorithm.toString());
         }
         var cipher = createCipher(combinedMetadata);
         try (var stream = file == null ? System.in : Files.newInputStream(file)) {
             try (var outputStream = output == null ? System.out : Files.newOutputStream(output)) {
-                performEncryption(stream, outputStream, cipher, key);
+                performEncryption(stream, outputStream, cipher, secretKey);
             }
         }
         log("Encryption complete");
         log("Encoding metadata…");
         combinedMetadata.setInitializationVector(cipher.getIV());
-        var metadataEncoded = mapper.writeValueAsBytes(combinedMetadata);
         if (metadataFile != null) {
             try (var out = Files.newBufferedWriter(metadataFile)) {
                 mapper.writeValue(out, combinedMetadata);
@@ -191,7 +208,7 @@ public class FileCrypt implements Callable<Integer> {
         if (keyFile != null) {
             log("Trying to read key from %s…", keyFile.toAbsolutePath());
             try {
-                byte[] keyBytes = Files.readAllBytes(keyFile);
+                byte[] keyBytes = Hex.decode(Files.readString(keyFile));
                 key = new SecretKeySpec(keyBytes, combinedMetadata.getAlgorithm().toString());
                 log("Read %d bit key", keyBytes.length * 8);
             } catch (NoSuchFileException e) {
@@ -342,6 +359,20 @@ public class FileCrypt implements Callable<Integer> {
     private void log(String message, Object... parameters) {
         if (verbose) {
             errorOutput.printf(Color.CYAN, message, parameters);
+            errorOutput.getPrintStream().println();
+        }
+    }
+
+    /**
+     * Formats and logs a single message.
+     * Uses {@link System#err} to not interfere with the standard output.
+     *
+     * @param message    the message
+     * @param parameters the message parameters
+     */
+    private void info(String message, Object... parameters) {
+        if (verbose) {
+            errorOutput.printf(Color.YELLOW, message, parameters);
             errorOutput.getPrintStream().println();
         }
     }

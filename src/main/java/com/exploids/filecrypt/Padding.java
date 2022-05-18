@@ -1,6 +1,8 @@
 package com.exploids.filecrypt;
 
 /**
+ * A block padding mode.
+ *
  * @author Luca Selinski
  */
 public enum Padding {

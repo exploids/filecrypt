@@ -1,20 +1,26 @@
 package com.exploids.fancyprinter;
 
+/**
+ * A color.
+ *
+ * @author Luca Selinski
+ */
 public enum Color {
-    BLACK("\u001B[30m"),
-    RED("\u001B[31m"),
-    GREEN("\u001B[32m"),
-    YELLOW("\u001B[33m"),
-    BLUE("\u001B[34m"),
-    PURPLE("\u001B[35m"),
-    CYAN("\u001B[36m"),
-    WHITE("\u001B[37m");
-    private final String ansi;
-    Color(String ansi) {
-        this.ansi = ansi;
-    }
+    BLACK,
+    RED,
+    GREEN,
+    YELLOW,
+    BLUE,
+    PURPLE,
+    CYAN,
+    WHITE;
 
+    /**
+     * Gets the ansi escape code corresponding to the color.
+     *
+     * @return the ansi escape code
+     */
     public String getAnsi() {
-        return ansi;
+        return "\u001B[" + (30 + ordinal()) + "m";
     }
 }
