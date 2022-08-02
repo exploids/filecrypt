@@ -1,11 +1,13 @@
 package com.exploids.filecrypt;
 
+import picocli.CommandLine;
+
 public enum ExitCode {
-    OK(0),
-    FAILURE(1),
-    IO_ERROR(2),
-    NO_SUCH_FILE(3),
-    KEY_ERROR(10);
+    OK(CommandLine.ExitCode.OK),
+    FAILURE(CommandLine.ExitCode.SOFTWARE),
+    IO_ERROR(3),
+    NO_SUCH_FILE(4),
+    KEY_ERROR(5);
     private final int code;
 
     ExitCode(int code) {

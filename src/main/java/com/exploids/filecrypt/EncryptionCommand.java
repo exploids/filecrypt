@@ -46,7 +46,7 @@ public class EncryptionCommand implements SubCommand {
         var file = parameters.getFile();
         var metadataFile = parameters.getMetadataFile();
         var keyFile = parameters.getKeyFile();
-        var key = parameters.getKey();
+        var key = parameters.getKeyData().getCipherKey();
         String baseName;
         Path base;
         if (file == null) {

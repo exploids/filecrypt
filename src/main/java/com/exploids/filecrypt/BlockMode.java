@@ -6,6 +6,7 @@ package com.exploids.filecrypt;
 public enum BlockMode {
     ECB,
     CBC,
+    CFB,
     OFB,
     CTS1,
     GCM,

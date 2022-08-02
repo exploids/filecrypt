@@ -107,7 +107,7 @@ public class FileCrypt implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            return callAndThrow();
+            return callAndThrow().getCode();
         } catch (InvalidKeyException e) {
             logger.error("invalid key", e);
             if (e.getMessage().equals("no IV set when one expected")) {
@@ -145,7 +145,7 @@ public class FileCrypt implements Callable<Integer> {
         }
     }
 
-    private int callAndThrow() throws InvalidAlgorithmParameterException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, NoSuchPaddingException {
+    private ExitCode callAndThrow() throws InvalidAlgorithmParameterException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, NoSuchPaddingException {
         var bouncyCastle = Security.getProvider("BC");
         if (bouncyCastle == null) {
             System.out.println(CommandLine.Help.Ansi.AUTO.string("@|red (-) BouncyCastle has not been found|@"));
@@ -176,7 +176,7 @@ public class FileCrypt implements Callable<Integer> {
         }
         if (insecure) {
             logger.error("Not all parameters are secure and insecure encryption is not allowed");
-            return ExitCode.FAILURE.getCode();
+            return ExitCode.FAILURE;
         }
         var file = parameters.getFile();
         String baseName;
@@ -204,7 +204,7 @@ public class FileCrypt implements Callable<Integer> {
             }
         }
         logger.info("The output has been written to {}", output.length == 0 ? "the standard output" : output[0].toAbsolutePath());
-        return ExitCode.OK.getCode();
+        return ExitCode.OK;
     }
 
     public static void main(String... args) {

@@ -12,9 +12,6 @@ public class Parameters {
     @CommandLine.Option(names = {"-o", "--output"}, arity = "0..1")
     private Path[] output;
 
-    @CommandLine.Option(names = {"--key"})
-    private ByteBuffer key;
-
     @CommandLine.Option(names = {"--key-file"})
     private Path keyFile;
 
@@ -23,6 +20,9 @@ public class Parameters {
 
     @CommandLine.ArgGroup(exclusive = false)
     private Metadata metadataArguments;
+
+    @CommandLine.ArgGroup(exclusive = false)
+    private KeyData keyData = new KeyData();
 
     @CommandLine.Option(names = {"-p", "--password"}, description = "The password to use.", interactive = true)
     private char[] password;
@@ -41,14 +41,6 @@ public class Parameters {
 
     public void setOutput(Path[] output) {
         this.output = output;
-    }
-
-    public ByteBuffer getKey() {
-        return key;
-    }
-
-    public void setKey(ByteBuffer key) {
-        this.key = key;
     }
 
     public Path getKeyFile() {
@@ -81,5 +73,13 @@ public class Parameters {
 
     public void setPassword(char[] password) {
         this.password = password;
+    }
+
+    public KeyData getKeyData() {
+        return keyData;
+    }
+
+    public void setKeyData(KeyData keyData) {
+        this.keyData = keyData;
     }
 }
