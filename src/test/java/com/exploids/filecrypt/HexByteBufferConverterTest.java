@@ -1,5 +1,6 @@
 package com.exploids.filecrypt;
 
+import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;

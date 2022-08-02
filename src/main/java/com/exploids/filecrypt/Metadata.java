@@ -1,5 +1,7 @@
 package com.exploids.filecrypt;
 
+import com.exploids.filecrypt.serialization.ByteArrayDeserializer;
+import com.exploids.filecrypt.serialization.ByteArraySerializer;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import picocli.CommandLine.Option;
@@ -36,19 +38,19 @@ public class Metadata {
     /**
      * The algorithm.
      */
-    @Option(names = {"-a", "--algorithm"})
+    @Option(names = {"--algorithm"})
     private Algorithm algorithm;
 
     /**
      * The block mode.
      */
-    @Option(names = {"-b", "--block-mode"})
+    @Option(names = {"--block-mode"})
     private BlockMode blockMode;
 
     /**
      * The padding.
      */
-    @Option(names = {"-d", "--padding"})
+    @Option(names = {"--padding"})
     private Padding padding;
 
     /**

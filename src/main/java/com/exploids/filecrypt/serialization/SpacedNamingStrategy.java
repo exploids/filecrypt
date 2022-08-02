@@ -1,4 +1,4 @@
-package com.exploids.filecrypt;
+package com.exploids.filecrypt.serialization;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 

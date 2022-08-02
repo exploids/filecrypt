@@ -2,6 +2,7 @@
  * @author Luca Selinski
  */
 module com.exploids.filecrypt {
+    requires org.slf4j;
     requires info.picocli;
     requires org.bouncycastle.provider;
     requires com.fasterxml.jackson.databind;
@@ -12,4 +13,6 @@ module com.exploids.filecrypt {
     opens com.exploids.filecrypt to info.picocli;
     exports com.exploids.fancyprinter to com.fasterxml.jackson.databind;
     opens com.exploids.fancyprinter to info.picocli;
+    exports com.exploids.filecrypt.serialization to com.fasterxml.jackson.databind;
+    opens com.exploids.filecrypt.serialization to info.picocli;
 }
