@@ -33,6 +33,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
@@ -87,9 +88,6 @@ public class FileCrypt implements Callable<Integer> {
             System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
             System.setProperty("org.slf4j.simpleLogger.showThreadName", "true");
             System.setProperty("org.slf4j.simpleLogger.showLogName", "true");
-        } else  {
-            System.setProperty("org.slf4j.simpleLogger.showThreadName", "false");
-            System.setProperty("org.slf4j.simpleLogger.showLogName", "false");
         }
     }
 
@@ -98,6 +96,9 @@ public class FileCrypt implements Callable<Integer> {
 
     @Option(names = {"-d", "--decrypt"})
     private boolean decrypt;
+
+    @Option(names = {"--insecure"})
+    private boolean insecure;
 
     @CommandLine.ArgGroup(exclusive = false)
     private Parameters parameters;
@@ -145,9 +146,13 @@ public class FileCrypt implements Callable<Integer> {
                 return ExitCode.KEY_ERROR;
             }
         } catch (InvalidCipherTextIOException e) {
-            logger.error("Invalid cipher text", e);
-            error("Failed to decrypt the file due to invalid cipher text!");
-            errorHelp("Did you select the correct key?");
+            if (e.getCause() instanceof IllegalBlockSizeException) {
+                logger.error("An illegal block size has been encountered. Did you select NO padding, even though your plain text is not block-aligned?");
+            } else {
+                logger.error("Invalid cipher text", e);
+                error("Failed to decrypt the file due to invalid cipher text!");
+                errorHelp("Did you select the correct key?");
+            }
             return ExitCode.FAILURE;
         } catch (InvalidAlgorithmParameterException e) {
             logger.error("InvalidAlgorithmParameterException", e);
@@ -216,9 +221,9 @@ public class FileCrypt implements Callable<Integer> {
         prepare();
         if (!decrypt) {
             boolean secure = checkSecure();
-            if (!secure) {
+            if (!secure && !insecure) {
                 logger.error("Not all parameters are secure and insecure encryption is not allowed");
-                return ExitCode.FAILURE;
+                return ExitCode.INSECURE;
             }
         }
         try (var in = file == null ? System.in : Files.newInputStream(file)) {
@@ -262,7 +267,6 @@ public class FileCrypt implements Callable<Integer> {
         combinedMetadata.setCipherAlgorithm(Algorithm.AES);
         combinedMetadata.setBlockMode(BlockMode.CBC);
         combinedMetadata.setPadding(Padding.PKCS7);
-        combinedMetadata.setMacAlgorithm(MacAlgorithm.HMACSHA256);
         var file = parameters.getFile();
         if (file != null) {
             var metadataFile = parameters.getMetadataFile();
@@ -276,7 +280,7 @@ public class FileCrypt implements Callable<Integer> {
             }
             var keyFile = parameters.getKeyFile();
             logger.debug("Trying to read key file {}…", keyFile.toAbsolutePath());
-            try (var in = Files.newBufferedReader(metadataFile)) {
+            try (var in = Files.newBufferedReader(keyFile)) {
                 var keyData = mapper.readValue(in, KeyData.class);
                 if (parameters.getKeyData().getCipherKey() == null) {
                     parameters.getKeyData().setCipherKey(keyData.getCipherKey());
@@ -292,6 +296,9 @@ public class FileCrypt implements Callable<Integer> {
         var metadataArguments = parameters.getMetadata();
         if (metadataArguments != null) {
             combinedMetadata.setFrom(metadataArguments);
+        }
+        if (combinedMetadata.getMacAlgorithm() == null && combinedMetadata.getMac() != null) {
+            combinedMetadata.setMacAlgorithm(MacAlgorithm.HMACSHA256);
         }
     }
 

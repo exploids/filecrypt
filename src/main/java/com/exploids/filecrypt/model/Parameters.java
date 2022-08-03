@@ -23,11 +23,8 @@ public class Parameters {
     @CommandLine.ArgGroup(exclusive = false)
     private KeyData keyData = new KeyData();
 
-    @CommandLine.Option(names = {"-p", "--password"}, description = "The password to use for encryption.", interactive = true)
+    @CommandLine.Option(names = {"-p", "--password"}, interactive = true)
     private char[] password;
-
-    @CommandLine.Option(names = {"-m", "--use-mac"})
-    private boolean usingMac;
 
     public Path getFile() {
         return file;
@@ -83,13 +80,5 @@ public class Parameters {
 
     public void setKeyData(KeyData keyData) {
         this.keyData = keyData;
-    }
-
-    public boolean isUsingMac() {
-        return usingMac;
-    }
-
-    public void setUsingMac(boolean usingMac) {
-        this.usingMac = usingMac;
     }
 }

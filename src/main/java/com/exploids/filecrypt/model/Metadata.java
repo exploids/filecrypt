@@ -62,7 +62,7 @@ public class Metadata {
     /**
      * The initialization vector.
      */
-    @Option(names = {"--iv", "--initialization-vector"})
+    @Option(names = {"--iv"})
     private ByteBuffer initializationVector;
 
     /**
@@ -74,7 +74,7 @@ public class Metadata {
     /**
      * The MAC.
      */
-    @Option(names = {"--mac"}, arity = "0..1")
+    @Option(names = {"-m", "--mac"}, arity = "0..1")
     private ByteBuffer mac;
 
     /**

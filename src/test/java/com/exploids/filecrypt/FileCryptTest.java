@@ -53,6 +53,24 @@ public class FileCryptTest {
     }
 
     @Test
+    public void testZeroBytePaddingInsecure() throws IOException {
+        Files.writeString(fileSystem.getPath("hello.txt"), "hello world");
+        assertEquals(ExitCode.INSECURE.getCode(), commandLine.execute("--file=hello.txt", "--padding=ZERO_BYTE"));
+    }
+
+    @Test
+    public void testInsecureAllowed() throws IOException {
+        Files.writeString(fileSystem.getPath("hello.txt"), "hello world");
+        assertEquals(ExitCode.OK.getCode(), commandLine.execute("--file=hello.txt", "--padding=ZERO_BYTE", "--insecure"));
+    }
+
+    @Test
+    public void testNoPaddingFail() throws IOException {
+        Files.writeString(fileSystem.getPath("hello.txt"), "hello world");
+        assertEquals(ExitCode.FAILURE.getCode(), commandLine.execute("--file=hello.txt", "--padding=NO"));
+    }
+
+    @Test
     public void testEncryptionOk() throws IOException {
         Files.writeString(fileSystem.getPath("hello.txt"), "hello world");
         assertEquals(ExitCode.OK.getCode(), commandLine.execute("--file=hello.txt"));
