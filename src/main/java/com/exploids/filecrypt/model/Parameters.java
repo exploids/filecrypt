@@ -1,8 +1,7 @@
-package com.exploids.filecrypt;
+package com.exploids.filecrypt.model;
 
 import picocli.CommandLine;
 
-import java.nio.ByteBuffer;
 import java.nio.file.Path;
 
 public class Parameters {
@@ -19,13 +18,16 @@ public class Parameters {
     private Path metadataFile;
 
     @CommandLine.ArgGroup(exclusive = false)
-    private Metadata metadataArguments;
+    private Metadata metadata;
 
     @CommandLine.ArgGroup(exclusive = false)
     private KeyData keyData = new KeyData();
 
-    @CommandLine.Option(names = {"-p", "--password"}, description = "The password to use.", interactive = true)
+    @CommandLine.Option(names = {"-p", "--password"}, description = "The password to use for encryption.", interactive = true)
     private char[] password;
+
+    @CommandLine.Option(names = {"-m", "--use-mac"})
+    private boolean usingMac;
 
     public Path getFile() {
         return file;
@@ -59,12 +61,12 @@ public class Parameters {
         this.metadataFile = metadataFile;
     }
 
-    public Metadata getMetadataArguments() {
-        return metadataArguments;
+    public Metadata getMetadata() {
+        return metadata;
     }
 
-    public void setMetadataArguments(Metadata metadataArguments) {
-        this.metadataArguments = metadataArguments;
+    public void setMetadata(Metadata metadata) {
+        this.metadata = metadata;
     }
 
     public char[] getPassword() {
@@ -81,5 +83,13 @@ public class Parameters {
 
     public void setKeyData(KeyData keyData) {
         this.keyData = keyData;
+    }
+
+    public boolean isUsingMac() {
+        return usingMac;
+    }
+
+    public void setUsingMac(boolean usingMac) {
+        this.usingMac = usingMac;
     }
 }

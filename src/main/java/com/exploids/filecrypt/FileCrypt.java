@@ -4,13 +4,25 @@ import com.exploids.fancyprinter.AnsiPrinter;
 import com.exploids.fancyprinter.Color;
 import com.exploids.fancyprinter.FancyPrinter;
 import com.exploids.fancyprinter.PlainPrinter;
+import com.exploids.filecrypt.exception.FileCryptException;
+import com.exploids.filecrypt.exception.MacVerificationFailedException;
+import com.exploids.filecrypt.model.Algorithm;
+import com.exploids.filecrypt.model.BlockMode;
+import com.exploids.filecrypt.model.ExitCode;
+import com.exploids.filecrypt.model.KeyData;
+import com.exploids.filecrypt.model.MacAlgorithm;
+import com.exploids.filecrypt.model.Metadata;
+import com.exploids.filecrypt.model.Padding;
+import com.exploids.filecrypt.model.Parameters;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.exploids.filecrypt.serialization.SpacedNamingStrategy;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.io.FilenameUtils;
+import org.bouncycastle.cms.CMSException;
 import org.bouncycastle.crypto.io.InvalidCipherTextIOException;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
@@ -62,13 +74,22 @@ public class FileCrypt implements Callable<Integer> {
         mapper = new ObjectMapper(new YAMLFactory()
                 .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
                 .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES))
-                .setPropertyNamingStrategy(new SpacedNamingStrategy());
+                .setPropertyNamingStrategy(new SpacedNamingStrategy())
+                .setSerializationInclusion(JsonInclude.Include.NON_NULL);
         if (CommandLine.Help.Ansi.AUTO.enabled()) {
             standardOutput = new AnsiPrinter(System.out);
             errorOutput = new AnsiPrinter(System.err);
         } else {
             standardOutput = new PlainPrinter(System.out);
             errorOutput = new PlainPrinter(System.err);
+        }
+        if (verbose) {
+            System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
+            System.setProperty("org.slf4j.simpleLogger.showThreadName", "true");
+            System.setProperty("org.slf4j.simpleLogger.showLogName", "true");
+        } else  {
+            System.setProperty("org.slf4j.simpleLogger.showThreadName", "false");
+            System.setProperty("org.slf4j.simpleLogger.showLogName", "false");
         }
     }
 
@@ -106,77 +127,69 @@ public class FileCrypt implements Callable<Integer> {
 
     @Override
     public Integer call() {
+        return callAndCatch().getCode();
+    }
+
+    private ExitCode callAndCatch() {
         try {
-            return callAndThrow().getCode();
+            return callAndThrow();
         } catch (InvalidKeyException e) {
             logger.error("invalid key", e);
             if (e.getMessage().equals("no IV set when one expected")) {
                 error("An IV is required, but was not provided!");
                 errorHelp("Did you select the correct metadata file?");
-                return ExitCode.FAILURE.getCode();
+                return ExitCode.FAILURE;
             } else {
                 error("A key is required, but was not provided!");
                 // errorHelp("Does %s exist?", keyFile.toAbsolutePath());
-                return ExitCode.KEY_ERROR.getCode();
+                return ExitCode.KEY_ERROR;
             }
         } catch (InvalidCipherTextIOException e) {
             logger.error("Invalid cipher text", e);
             error("Failed to decrypt the file due to invalid cipher text!");
             errorHelp("Did you select the correct key?");
-            return ExitCode.FAILURE.getCode();
+            return ExitCode.FAILURE;
         } catch (InvalidAlgorithmParameterException e) {
             logger.error("InvalidAlgorithmParameterException", e);
-            return ExitCode.FAILURE.getCode();
+            return ExitCode.FAILURE;
         } catch (NoSuchPaddingException e) {
             logger.error("NoSuchPaddingException", e);
-            return ExitCode.FAILURE.getCode();
+            return ExitCode.FAILURE;
         } catch (NoSuchFileException e) {
             logger.error("The file {} does not exist", e.getFile());
-            return ExitCode.NO_SUCH_FILE.getCode();
+            return ExitCode.NO_SUCH_FILE;
         } catch (IOException e) {
             logger.error("There was an IO error", e);
-            return ExitCode.IO_ERROR.getCode();
-        } catch (NoSuchAlgorithmException e) {
-            logger.error("NoSuchAlgorithmException", e);
-            return ExitCode.FAILURE.getCode();
-        } catch (NoSuchProviderException e) {
-            logger.error("NoSuchProviderException", e);
-            return ExitCode.FAILURE.getCode();
+            return ExitCode.IO_ERROR;
+        } catch (MacVerificationFailedException e) {
+            logger.error("The file contents could not be authenticated");
+            logger.debug("The MAC does not match", e);
+            return ExitCode.MAC_VERIFICATION_FAILED;
+        } catch (NoSuchAlgorithmException | CMSException | NoSuchProviderException | FileCryptException e) {
+            logger.error("An unexpected error occurred", e);
+            return ExitCode.FAILURE;
         }
     }
 
-    private ExitCode callAndThrow() throws InvalidAlgorithmParameterException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, NoSuchPaddingException {
+    private ExitCode callAndThrow() throws InvalidAlgorithmParameterException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, NoSuchPaddingException, CMSException, FileCryptException {
         var bouncyCastle = Security.getProvider("BC");
         if (bouncyCastle == null) {
-            System.out.println(CommandLine.Help.Ansi.AUTO.string("@|red (-) BouncyCastle has not been found|@"));
+            logger.error("BouncyCastle has not been found");
+            return ExitCode.FAILURE;
         } else {
-            System.out.println(CommandLine.Help.Ansi.AUTO.string("@|green (+) Found " + bouncyCastle.getInfo() + "|@"));
+            logger.debug("Found {}", bouncyCastle.getInfo());
         }
         if (hasUnlimitedStrength()) {
-            System.out.println(CommandLine.Help.Ansi.AUTO.string("@|green (+) Unlimited strength is allowed|@"));
+            logger.debug("Unlimited strength is allowed");
         } else {
-            System.out.println(CommandLine.Help.Ansi.AUTO.string("@|red (-) Unlimited strength is not allowed|@"));
-        }
-        boolean insecure = false;
-        prepare();
-        if (combinedMetadata.getAlgorithm() == Algorithm.AES) {
-            printCheckNice("other.check.algorithm.secure", combinedMetadata.getAlgorithm());
-        } else {
-            printCheckFail("other.check.algorithm.insecure", combinedMetadata.getAlgorithm());
-            insecure = true;
-        }
-        if (combinedMetadata.getPadding() == Padding.ZERO_BYTE) {
-            printCheckFail("other.check.padding.insecure", combinedMetadata.getPadding());
-            insecure = true;
-        } else {
-            printCheckNice("other.check.padding.secure", combinedMetadata.getPadding());
-        }
-        if (combinedMetadata.getInitializationVector() != null) {
-            printCheckWarn("other.check.iv.given", Hex.toHexString(combinedMetadata.getInitializationVector()));
-        }
-        if (insecure) {
-            logger.error("Not all parameters are secure and insecure encryption is not allowed");
+            logger.error("Unlimited strength is not allowed");
             return ExitCode.FAILURE;
+        }
+        SubCommand command;
+        if (decrypt) {
+            command = new DecryptionCommand();
+        } else {
+            command = new EncryptionCommand(mapper);
         }
         var file = parameters.getFile();
         String baseName;
@@ -188,23 +201,53 @@ public class FileCrypt implements Callable<Integer> {
             baseName = FilenameUtils.removeExtension(file.getFileName().toString());
             base = file;
         }
-        var output = parameters.getOutput();
-        SubCommand command;
-        if (decrypt) {
-            command = new DecryptionCommand(parameters, combinedMetadata, createCipher(combinedMetadata));
-        } else {
-            command = new EncryptionCommand(mapper, parameters, combinedMetadata, createCipher(combinedMetadata));
+        var metadataFile = parameters.getMetadataFile();
+        if (metadataFile == null) {
+            parameters.setMetadataFile(base.resolveSibling(command.companionBaseName(baseName) + "_meta.yaml"));
         }
+        var keyFile = parameters.getKeyFile();
+        if (keyFile == null) {
+            parameters.setKeyFile(base.resolveSibling(command.companionBaseName(baseName) + "_key.yaml"));
+        }
+        var output = parameters.getOutput();
         if (output == null) {
-            output = new Path[]{command.resolveOutput(base, baseName)};
+            output = new Path[]{base.resolveSibling(command.outputBaseName(baseName))};
+        }
+        prepare();
+        if (!decrypt) {
+            boolean secure = checkSecure();
+            if (!secure) {
+                logger.error("Not all parameters are secure and insecure encryption is not allowed");
+                return ExitCode.FAILURE;
+            }
         }
         try (var in = file == null ? System.in : Files.newInputStream(file)) {
             try (var out = output.length == 0 ? System.out : Files.newOutputStream(output[0])) {
-                command.call(in, out);
+                command.call(parameters, combinedMetadata, createCipher(combinedMetadata), in, out);
             }
         }
         logger.info("The output has been written to {}", output.length == 0 ? "the standard output" : output[0].toAbsolutePath());
         return ExitCode.OK;
+    }
+
+    private boolean checkSecure() {
+        boolean secure = true;
+        if (combinedMetadata.getCipherAlgorithm() == Algorithm.AES) {
+            printCheckNice("other.check.algorithm.secure", combinedMetadata.getCipherAlgorithm());
+        } else {
+            printCheckFail("other.check.algorithm.insecure", combinedMetadata.getCipherAlgorithm());
+            secure = false;
+        }
+        if (combinedMetadata.getPadding() == Padding.ZERO_BYTE) {
+            printCheckFail("other.check.padding.insecure", combinedMetadata.getPadding());
+            secure = false;
+        } else {
+            printCheckNice("other.check.padding.secure", combinedMetadata.getPadding());
+        }
+        if (combinedMetadata.getInitializationVector() != null) {
+            printCheckWarn("other.check.iv.given", Hex.toHexString(combinedMetadata.getInitializationVector().array()));
+        }
+        return secure;
     }
 
     public static void main(String... args) {
@@ -216,26 +259,37 @@ public class FileCrypt implements Callable<Integer> {
 
     private void prepare() throws IOException {
         combinedMetadata = new Metadata();
-        combinedMetadata.setAlgorithm(Algorithm.AES);
+        combinedMetadata.setCipherAlgorithm(Algorithm.AES);
         combinedMetadata.setBlockMode(BlockMode.CBC);
         combinedMetadata.setPadding(Padding.PKCS7);
+        combinedMetadata.setMacAlgorithm(MacAlgorithm.HMACSHA256);
         var file = parameters.getFile();
         if (file != null) {
-            var baseName = FilenameUtils.removeExtension(file.getFileName().toString());
             var metadataFile = parameters.getMetadataFile();
-            if (metadataFile == null) {
-                metadataFile = file.resolveSibling(baseName + "_meta.yaml");
-            }
-            logger.debug("Trying to read metadata file…");
+            logger.debug("Trying to read metadata file {}…", metadataFile.toAbsolutePath());
             try (var metaInput = Files.newBufferedReader(metadataFile)) {
                 var fileMetadata = mapper.readValue(metaInput, Metadata.class);
                 combinedMetadata.setFrom(fileMetadata);
-                logger.debug("Read metadata");
+                logger.debug("Read metadata file");
+            } catch (NoSuchFileException e) {
+                logger.debug("Could not find {}", metadataFile.toAbsolutePath());
+            }
+            var keyFile = parameters.getKeyFile();
+            logger.debug("Trying to read key file {}…", keyFile.toAbsolutePath());
+            try (var in = Files.newBufferedReader(metadataFile)) {
+                var keyData = mapper.readValue(in, KeyData.class);
+                if (parameters.getKeyData().getCipherKey() == null) {
+                    parameters.getKeyData().setCipherKey(keyData.getCipherKey());
+                }
+                if (parameters.getKeyData().getMacKey() == null) {
+                    parameters.getKeyData().setMacKey(keyData.getMacKey());
+                }
+                logger.debug("Read key file");
             } catch (NoSuchFileException e) {
                 logger.debug("Could not find {}", metadataFile.toAbsolutePath());
             }
         }
-        var metadataArguments = parameters.getMetadataArguments();
+        var metadataArguments = parameters.getMetadata();
         if (metadataArguments != null) {
             combinedMetadata.setFrom(metadataArguments);
         }
@@ -309,7 +363,7 @@ public class FileCrypt implements Callable<Integer> {
      * @throws NoSuchAlgorithmException
      */
     Cipher createCipher(Metadata metadata) throws NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException {
-        var cipherName = String.format("%s/%s/%s", metadata.getAlgorithm(), metadata.getBlockMode(), metadata.getPadding());
+        var cipherName = String.format("%s/%s/%s", metadata.getCipherAlgorithm(), metadata.getBlockMode(), metadata.getPadding().getAlgorithmName());
         logger.debug("Creating {} cipher…", cipherName);
         return Cipher.getInstance(cipherName, "BC");
     }

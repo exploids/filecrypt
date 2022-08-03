@@ -1,5 +1,6 @@
 package com.exploids.filecrypt;
 
+import com.exploids.filecrypt.model.BlockMode;
 import org.apache.commons.io.input.CloseShieldInputStream;
 import org.bouncycastle.util.encoders.Hex;
 import org.ini4j.Ini;
@@ -7,7 +8,6 @@ import org.ini4j.Profile;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import javax.crypto.Cipher;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;

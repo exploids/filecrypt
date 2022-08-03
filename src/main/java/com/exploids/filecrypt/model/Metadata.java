@@ -1,7 +1,7 @@
-package com.exploids.filecrypt;
+package com.exploids.filecrypt.model;
 
-import com.exploids.filecrypt.serialization.ByteArrayDeserializer;
-import com.exploids.filecrypt.serialization.ByteArraySerializer;
+import com.exploids.filecrypt.serialization.ByteBufferDeserializer;
+import com.exploids.filecrypt.serialization.ByteBufferSerializer;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import picocli.CommandLine.Option;
@@ -23,13 +23,13 @@ public class Metadata {
     /**
      * Creates metadata from the given values.
      *
-     * @param algorithm            the algorithm
+     * @param cipherAlgorithm            the algorithm
      * @param blockMode            the block mode
      * @param padding              the padding
      * @param initializationVector the iv
      */
-    public Metadata(Algorithm algorithm, BlockMode blockMode, Padding padding, ByteBuffer initializationVector) {
-        this.algorithm = algorithm;
+    public Metadata(Algorithm cipherAlgorithm, BlockMode blockMode, Padding padding, ByteBuffer initializationVector) {
+        this.cipherAlgorithm = cipherAlgorithm;
         this.blockMode = blockMode;
         this.padding = padding;
         this.initializationVector = initializationVector;
@@ -39,7 +39,7 @@ public class Metadata {
      * The algorithm.
      */
     @Option(names = {"--algorithm"})
-    private Algorithm algorithm;
+    private Algorithm cipherAlgorithm;
 
     /**
      * The block mode.
@@ -66,21 +66,33 @@ public class Metadata {
     private ByteBuffer initializationVector;
 
     /**
+     * The MAC algorithm.
+     */
+    @Option(names = {"--mac-algorithm"})
+    private MacAlgorithm macAlgorithm;
+
+    /**
+     * The MAC.
+     */
+    @Option(names = {"--mac"}, arity = "0..1")
+    private ByteBuffer mac;
+
+    /**
      * Gets the algorithm of this metadata.
      *
      * @return the algorithm
      */
-    public Algorithm getAlgorithm() {
-        return algorithm;
+    public Algorithm getCipherAlgorithm() {
+        return cipherAlgorithm;
     }
 
     /**
      * Sets the algorithm of this metadata.
      *
-     * @param algorithm the new algorithm
+     * @param cipherAlgorithm the new algorithm
      */
-    public void setAlgorithm(Algorithm algorithm) {
-        this.algorithm = algorithm;
+    public void setCipherAlgorithm(Algorithm cipherAlgorithm) {
+        this.cipherAlgorithm = cipherAlgorithm;
     }
 
     /**
@@ -138,13 +150,51 @@ public class Metadata {
     }
 
     /**
+     * Gets the mac algorithm of this metadata.
+     *
+     * @return the mac algorithm
+     */
+    public MacAlgorithm getMacAlgorithm() {
+        return macAlgorithm;
+    }
+
+    /**
+     * Sets the macAlgorithm of this metadata.
+     *
+     * @param macAlgorithm the new macAlgorithm
+     */
+    public void setMacAlgorithm(MacAlgorithm macAlgorithm) {
+        this.macAlgorithm = macAlgorithm;
+    }
+
+    /**
+     * Gets the mac of this metadata.
+     *
+     * @return the mac
+     */
+    @JsonSerialize(using = ByteBufferSerializer.class)
+    public ByteBuffer getMac() {
+        return mac;
+    }
+
+    /**
+     * Sets the mac of this metadata.
+     *
+     * @param mac the new mac
+     */
+    @JsonDeserialize(using = ByteBufferDeserializer.class)
+    public void setMac(ByteBuffer mac) {
+        this.mac = mac;
+    }
+
+    /**
      * Gets the initialization vector of this metadata.
      *
      * @return the initialization vector
      */
-    @JsonSerialize(using = ByteArraySerializer.class)
-    public byte[] getInitializationVector() {
-        return initializationVector == null ? null : initializationVector.array();
+    @JsonSerialize(using = ByteBufferSerializer.class)
+    public ByteBuffer getInitializationVector() {
+        return initializationVector;
     }
 
     /**
@@ -152,9 +202,9 @@ public class Metadata {
      *
      * @param initializationVector the new initialization vector
      */
-    @JsonDeserialize(using = ByteArrayDeserializer.class)
-    public void setInitializationVector(byte[] initializationVector) {
-        this.initializationVector = ByteBuffer.wrap(initializationVector);
+    @JsonDeserialize(using = ByteBufferDeserializer.class)
+    public void setInitializationVector(ByteBuffer initializationVector) {
+        this.initializationVector = initializationVector;
     }
 
     /**
@@ -163,8 +213,8 @@ public class Metadata {
      * @param other the metadata to read from
      */
     public void setFrom(Metadata other) {
-        if (other.algorithm != null) {
-            algorithm = other.algorithm;
+        if (other.cipherAlgorithm != null) {
+            cipherAlgorithm = other.cipherAlgorithm;
         }
         if (other.blockMode != null) {
             blockMode = other.blockMode;
@@ -172,18 +222,30 @@ public class Metadata {
         if (other.padding != null) {
             padding = other.padding;
         }
+        if (other.keySize != 0) {
+            keySize = other.keySize;
+        }
         if (other.initializationVector != null) {
             initializationVector = other.initializationVector;
+        }
+        if (other.macAlgorithm != null) {
+            macAlgorithm = other.macAlgorithm;
+        }
+        if (other.mac != null) {
+            mac = other.mac;
         }
     }
 
     @Override
     public String toString() {
         return "Metadata{" +
-                "algorithm=" + algorithm +
+                "algorithm=" + cipherAlgorithm +
                 ", blockMode=" + blockMode +
                 ", padding=" + padding +
+                ", keySize=" + keySize +
                 ", initializationVector=" + initializationVector +
+                ", macAlgorithm=" + macAlgorithm +
+                ", mac=" + mac +
                 '}';
     }
 }

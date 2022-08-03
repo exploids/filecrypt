@@ -1,4 +1,4 @@
-package com.exploids.filecrypt;
+package com.exploids.filecrypt.model;
 
 /**
  * @author Luca Selinski

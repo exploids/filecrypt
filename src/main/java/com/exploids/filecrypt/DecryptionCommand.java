@@ -1,24 +1,23 @@
 package com.exploids.filecrypt;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.commons.io.FilenameUtils;
-import org.bouncycastle.crypto.io.InvalidCipherTextIOException;
+import com.exploids.filecrypt.exception.MacVerificationFailedException;
+import com.exploids.filecrypt.model.Metadata;
+import com.exploids.filecrypt.model.Parameters;
 import org.bouncycastle.jcajce.io.CipherOutputStream;
+import org.bouncycastle.util.Arrays;
 import org.bouncycastle.util.encoders.Hex;
+import org.bouncycastle.util.io.TeeInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
+import javax.crypto.Mac;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.ByteBuffer;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -26,58 +25,53 @@ import java.security.NoSuchProviderException;
 
 public class DecryptionCommand implements SubCommand {
     private final Logger logger = LoggerFactory.getLogger(getClass());
-    private final Parameters parameters;
 
-    private final Metadata combinedMetadata;
-    private final Cipher cipher;
-
-    public DecryptionCommand(Parameters parameters, Metadata combinedMetadata, Cipher cipher) {
-        this.parameters = parameters;
-        this.combinedMetadata = combinedMetadata;
-        this.cipher = cipher;
+    @Override
+    public String outputBaseName(String baseName) {
+        return baseName + "_decrypted";
     }
 
     @Override
-    public Path resolveOutput(Path base, String baseName) {
-        return base.resolveSibling(baseName + "_dec");
+    public String companionBaseName(String baseName) {
+        return baseName;
     }
 
     @Override
-    public void call(InputStream in, OutputStream out) throws IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, InvalidAlgorithmParameterException {
-        var file = parameters.getFile();
-        String baseName;
-        Path base;
-        if (file == null) {
-            baseName = "stdin";
-            base = Paths.get(baseName);
-        } else {
-            baseName = FilenameUtils.removeExtension(file.getFileName().toString());
-            base = file;
-        }
-        var keyFile = parameters.getKeyFile();
-        if (keyFile == null) {
-            keyFile = base.resolveSibling(baseName + "_key.txt");
-        }
+    public void call(Parameters parameters, Metadata combinedMetadata, Cipher cipher, InputStream in, OutputStream out) throws IOException, InvalidKeyException, InvalidAlgorithmParameterException, MacVerificationFailedException, NoSuchAlgorithmException, NoSuchProviderException {
         logger.debug("Decrypting file…");
-        SecretKey key = null;
-        logger.debug("Trying to read key from {}…", keyFile.toAbsolutePath());
-        try {
-            byte[] keyBytes = Hex.decode(Files.readString(keyFile));
-            key = new SecretKeySpec(keyBytes, combinedMetadata.getAlgorithm().toString());
-            logger.debug("Read {} bit key", keyBytes.length * 8);
-        } catch (NoSuchFileException e) {
-            logger.debug("Key file does not exist");
-        }
-        logger.debug("Initializing cipher…");
+        var key = new SecretKeySpec(parameters.getKeyData().getCipherKey().array(), combinedMetadata.getCipherAlgorithm().toString());
+        logger.debug("Initializing {} cipher…", cipher.getAlgorithm());
         var iv = combinedMetadata.getInitializationVector();
         if (iv == null) {
             cipher.init(Cipher.DECRYPT_MODE, key);
         } else {
-            cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
+            cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv.array()));
         }
         logger.debug("Decrypting file…");
+        InputStream stream = in;
+        MacOutputStream macCalculator = null;
+        if (combinedMetadata.getMac() != null) {
+            var macKeyBytes = parameters.getKeyData().getMacKey();
+            if (macKeyBytes == null) {
+                logger.debug("Missing MAC key");
+                throw new MacVerificationFailedException();
+            }
+            var macKey = new SecretKeySpec(macKeyBytes.array(), combinedMetadata.getMacAlgorithm().toString());
+            var mac = Mac.getInstance(combinedMetadata.getMacAlgorithm().toString(), "BC");
+            mac.init(macKey);
+            macCalculator = new MacOutputStream(mac);
+            stream = new TeeInputStream(stream, macCalculator);
+        }
         try (var outputStream = new CipherOutputStream(out, cipher)) {
-            in.transferTo(outputStream);
+            stream.transferTo(outputStream);
+        }
+        if (macCalculator != null) {
+            macCalculator.close();
+            if (Arrays.areEqual(combinedMetadata.getMac().array(), macCalculator.getMac())) {
+                logger.debug("The MAC {} seems to be valid", Hex.toHexString(macCalculator.getMac()));
+            } else {
+                throw new MacVerificationFailedException();
+            }
         }
     }
 }

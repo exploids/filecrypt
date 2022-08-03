@@ -1,22 +1,28 @@
 package com.exploids.filecrypt;
 
+import com.exploids.filecrypt.model.Metadata;
+import com.exploids.filecrypt.model.Parameters;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.commons.io.FilenameUtils;
+import org.bouncycastle.cms.CMSException;
+import org.bouncycastle.cms.jcajce.JceCMSMacCalculatorBuilder;
 import org.bouncycastle.jcajce.io.CipherOutputStream;
-import org.bouncycastle.util.encoders.Hex;
+import org.bouncycastle.operator.DefaultMacAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.MacCalculator;
+import org.bouncycastle.util.io.TeeOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.security.AlgorithmParameters;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
@@ -24,45 +30,27 @@ import java.security.NoSuchProviderException;
 public class EncryptionCommand implements SubCommand {
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final ObjectMapper mapper;
-    private final Parameters parameters;
 
-    private final Metadata combinedMetadata;
-    private final Cipher cipher;
-
-    public EncryptionCommand(ObjectMapper mapper, Parameters parameters, Metadata combinedMetadata, Cipher cipher) {
+    public EncryptionCommand(ObjectMapper mapper) {
         this.mapper = mapper;
-        this.parameters = parameters;
-        this.combinedMetadata = combinedMetadata;
-        this.cipher = cipher;
     }
 
     @Override
-    public Path resolveOutput(Path base, String baseName) {
-        return base.resolveSibling(baseName + "_enc");
+    public String outputBaseName(String baseName) {
+        return baseName + "_encrypted";
     }
 
     @Override
-    public void call(InputStream in, OutputStream out) throws IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException {
-        var file = parameters.getFile();
+    public String companionBaseName(String baseName) {
+        return outputBaseName(baseName);
+    }
+
+    @Override
+    public void call(Parameters parameters, Metadata combinedMetadata, Cipher cipher, InputStream in, OutputStream out) throws IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, CMSException {
         var metadataFile = parameters.getMetadataFile();
         var keyFile = parameters.getKeyFile();
         var key = parameters.getKeyData().getCipherKey();
-        String baseName;
-        Path base;
-        if (file == null) {
-            baseName = "stdin";
-            base = Paths.get(baseName);
-        } else {
-            baseName = FilenameUtils.removeExtension(file.getFileName().toString());
-            base = file;
-        }
-        if (metadataFile == null) {
-            metadataFile = base.resolveSibling(baseName + "_enc_meta.yaml");
-        }
-        if (keyFile == null) {
-            keyFile = base.resolveSibling(baseName + "_enc_key.txt");
-        }
-        var algorithm = combinedMetadata.getAlgorithm();
+        var algorithm = combinedMetadata.getCipherAlgorithm();
         SecretKey secretKey;
         if (key == null) {
             logger.debug("Creating {} key generator…", algorithm);
@@ -74,19 +62,36 @@ public class EncryptionCommand implements SubCommand {
             secretKey = keyGenerator.generateKey();
             combinedMetadata.setKeySize(secretKey.getEncoded().length * 8);
             logger.debug("Generated {} bit key", secretKey.getEncoded().length * 8);
-            logger.debug("Writing key to {}…", keyFile.toAbsolutePath());
-            Files.writeString(keyFile, Hex.toHexString(secretKey.getEncoded()));
-            logger.debug("Wrote key");
+            parameters.getKeyData().setCipherKey(ByteBuffer.wrap(secretKey.getEncoded()));
             logger.info("The key has been written to {}", keyFile.toAbsolutePath());
         } else {
             logger.debug("Using provided key");
             secretKey = new SecretKeySpec(key.array(), algorithm.toString());
         }
-        performEncryption(in, out, cipher, secretKey);
+        var stream = out;
+        MacOutputStream macCalculator = null;
+        if (combinedMetadata.getMac() != null) {
+            var keyGenerator = KeyGenerator.getInstance(combinedMetadata.getMacAlgorithm().getKeyAlgorithmName(), "BC");
+            logger.debug("Generating {} key…", combinedMetadata.getMacAlgorithm());
+            var macKey = keyGenerator.generateKey();
+            parameters.getKeyData().setMacKey(ByteBuffer.wrap(macKey.getEncoded()));
+            var mac = Mac.getInstance(combinedMetadata.getMacAlgorithm().toString(), "BC");
+            mac.init(macKey);
+            macCalculator = new MacOutputStream(mac);
+            stream = new TeeOutputStream(stream, macCalculator);
+        }
+        performEncryption(in, stream, cipher, secretKey);
+        if (macCalculator != null) {
+            combinedMetadata.setMac(ByteBuffer.wrap(macCalculator.getMac()));
+        }
         logger.debug("Encoding metadata…");
-        combinedMetadata.setInitializationVector(cipher.getIV());
+        combinedMetadata.setInitializationVector(ByteBuffer.wrap(cipher.getIV()));
         try (var metadataOut = Files.newBufferedWriter(metadataFile)) {
             mapper.writeValue(metadataOut, combinedMetadata);
+        }
+        logger.debug("Encoding key…");
+        try (var keyOut = Files.newBufferedWriter(parameters.getKeyFile())) {
+            mapper.writeValue(keyOut, parameters.getKeyData());
         }
     }
 
