@@ -11,37 +11,37 @@ A tool to encrypt and decrypt files.
 To encrypt the file *secret.txt*, run the following command:
 
 ```shell
-filecrypt encrypt secret.txt
+filecrypt --file secret.txt
 # or shorter:
-filecrypt e secret.txt
+filecrypt -f secret.txt
 ```
 
 This will result in 3 files:
 
-1. The encrypted file *secret_enc*
-2. A key file *secret_enc_key*
-3. A metadata file *secret_enc.toml*
+1. The encrypted file *secret_encrypted*
+2. A key file *secret_encrypted_key.yaml*
+3. A metadata file *secret_encrypted_meta.yaml*
 
-The actual data is contained in *secret_enc*.
-To decrypt *secret_enc*, the key contained in *secret_enc_key* is needed.
-The file *secret_enc.toml* contains all the other necessary parameters to decrypt the file.
+The actual data is contained in *secret_encrypted*.
+To decrypt *secret_encrypted*, the key contained in *secret_encrypted_key.yaml* is needed.
+The file *secret_encrypted_meta.yaml* contains all the other necessary parameters to decrypt the file.
 
 #### Decrypting
 
-In order to decrypt the file *secret_enc*, use the following command:
+In order to decrypt the file *secret_encrypted*, use the following command:
 
 ```shell
-filecrypt decrypt secret_enc
+filecrypt --decrypt --file secret_encrypted
 # or shorter:
-filecrypt d secret_enc
+filecrypt -df secret_encrypted
 ```
 
-The result is the decrypted file *secret_enc_dec*.
-This command expects the files *secret_enc_key* and *secret_enc.toml* to be present.
+The result is the decrypted file *secret_encrypted_decrypted*.
+This command expects the files *secret_encrypted_key.yaml* and *secret_encrypted_meta.yaml* to be present.
 If your key file and metadata file have different names, you have to specify them explicitly:
 
 ```shell
-filecrypt --key-file secret_enc_key --metadata-file secret_enc.toml decrypt secret_enc
+filecrypt --decrypt --file secret_encrypted --key-file secret_encrypted_key.yaml --metadata-file secret_encrypted_meta.yaml
 # or shorter:
-filecrypt -k secret_enc_key -m secret_enc.toml d secret_enc
+filecrypt -df secret_encrypted --key-file secret_encrypted_key.yaml --metadata-file secret_encrypted_meta.yaml
 ```
