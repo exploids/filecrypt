@@ -10,7 +10,4 @@ buildNumber.properties
 # https://github.com/takari/maven-wrapper#usage-without-binary-jar
 .mvn/wrapper/maven-wrapper.jar
 helloworld*
-pi-billion-decoded.txt
-pi-billion.key
-pi-billion.tar
-pi-billion.txt
+pi-billion*

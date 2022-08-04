@@ -12,8 +12,8 @@ public class KeyData {
     @CommandLine.Option(names = {"--cipher-key"})
     private ByteBuffer cipherKey;
 
-    @CommandLine.Option(names = {"--mac-key"})
-    private ByteBuffer macKey;
+    @CommandLine.Option(names = {"--verification-key"})
+    private ByteBuffer verificationKey;
 
     @JsonSerialize(using = ByteBufferSerializer.class)
     public ByteBuffer getCipherKey() {
@@ -26,12 +26,12 @@ public class KeyData {
     }
 
     @JsonSerialize(using = ByteBufferSerializer.class)
-    public ByteBuffer getMacKey() {
-        return macKey;
+    public ByteBuffer getVerificationKey() {
+        return verificationKey;
     }
 
     @JsonDeserialize(using = ByteBufferDeserializer.class)
-    public void setMacKey(ByteBuffer macKey) {
-        this.macKey = macKey;
+    public void setVerificationKey(ByteBuffer verificationKey) {
+        this.verificationKey = verificationKey;
     }
 }

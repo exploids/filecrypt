@@ -3,13 +3,14 @@ package com.exploids.filecrypt.model;
 /**
  * @author Luca Selinski
  */
-public enum MacAlgorithm {
+public enum VerificationAlgorithm {
+    SHA256(null),
     AESCMAC("AES"),
     HMACSHA256("HMACSHA256");
 
     private final String keyAlgorithmName;
 
-    MacAlgorithm(String keyAlgorithmName) {
+    VerificationAlgorithm(String keyAlgorithmName) {
         this.keyAlgorithmName = keyAlgorithmName;
     }
 

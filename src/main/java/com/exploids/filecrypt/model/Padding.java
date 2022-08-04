@@ -7,17 +7,37 @@ package com.exploids.filecrypt.model;
  */
 public enum Padding {
     /**
-     * NoPadding.
+     * No padding at all.
      */
-    NO("NoPadding"),
+    NONE("NoPadding"),
 
     /**
-     * PKCS7Padding.
+     * ISO7816-4 Padding.
+     */
+    ISO7816_4("ISO7816-4Padding"),
+
+    /**
+     * ISO101026-2 Padding.
+     */
+    ISO10126_2("ISO10126-2Padding"),
+
+    /**
+     * PKCS#5/PKCS#7 Padding.
      */
     PKCS7("PKCS7Padding"),
 
     /**
-     * ZeroBytePadding.
+     * Trailing bit complement padding.
+     */
+    TBC("TBCPadding"),
+
+    /**
+     * X9.23 Padding.
+     */
+    X9_23("X9.23Padding"),
+
+    /**
+     * Zero byte padding.
      */
     ZERO_BYTE("ZeroBytePadding");
 

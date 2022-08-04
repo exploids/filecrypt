@@ -3,12 +3,8 @@ package com.exploids.filecrypt;
 import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Parameters;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.bouncycastle.cms.CMSException;
-import org.bouncycastle.cms.jcajce.JceCMSMacCalculatorBuilder;
+import org.apache.commons.io.output.TeeOutputStream;
 import org.bouncycastle.jcajce.io.CipherOutputStream;
-import org.bouncycastle.operator.DefaultMacAlgorithmIdentifierFinder;
-import org.bouncycastle.operator.MacCalculator;
-import org.bouncycastle.util.io.TeeOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,18 +14,21 @@ import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
-import java.security.AlgorithmParameters;
 import java.security.InvalidKeyException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 
 public class EncryptionCommand implements SubCommand {
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final ObjectMapper mapper;
+    private Parameters parameters;
+    private Cipher cipher;
+    private Metadata combinedMetadata;
+    private VerificationCalculator verificationCalculator;
 
     public EncryptionCommand(ObjectMapper mapper) {
         this.mapper = mapper;
@@ -46,8 +45,10 @@ public class EncryptionCommand implements SubCommand {
     }
 
     @Override
-    public void call(Parameters parameters, Metadata combinedMetadata, Cipher cipher, InputStream in, OutputStream out) throws IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, CMSException {
-        var metadataFile = parameters.getMetadataFile();
+    public OutputStream call(Parameters parameters, Metadata combinedMetadata, Cipher cipher, OutputStream out) throws NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException {
+        this.parameters = parameters;
+        this.combinedMetadata = combinedMetadata;
+        this.cipher = cipher;
         var keyFile = parameters.getKeyFile();
         var key = parameters.getKeyData().getCipherKey();
         var algorithm = combinedMetadata.getCipherAlgorithm();
@@ -69,39 +70,45 @@ public class EncryptionCommand implements SubCommand {
             secretKey = new SecretKeySpec(key.array(), algorithm.toString());
         }
         var stream = out;
-        MacOutputStream macCalculator = null;
-        if (combinedMetadata.getMac() != null) {
-            var keyGenerator = KeyGenerator.getInstance(combinedMetadata.getMacAlgorithm().getKeyAlgorithmName(), "BC");
-            logger.debug("Generating {} key…", combinedMetadata.getMacAlgorithm());
-            var macKey = keyGenerator.generateKey();
-            parameters.getKeyData().setMacKey(ByteBuffer.wrap(macKey.getEncoded()));
-            var mac = Mac.getInstance(combinedMetadata.getMacAlgorithm().toString(), "BC");
-            mac.init(macKey);
-            macCalculator = new MacOutputStream(mac);
-            stream = new TeeOutputStream(stream, macCalculator);
+        if (combinedMetadata.getVerification() != null) {
+            var verificationAlgorithm = combinedMetadata.getVerificationAlgorithm();
+            if (verificationAlgorithm.getKeyAlgorithmName() == null) {
+                logger.debug("Selected verification algorithm {} is a message digest", verificationAlgorithm);
+                var messageDigest = MessageDigest.getInstance(verificationAlgorithm.toString(), "BC");
+                verificationCalculator = new MessageDigestOutputStream(messageDigest);
+            } else {
+                logger.debug("Selected verification algorithm {} is a MAC", verificationAlgorithm);
+                var keyGenerator = KeyGenerator.getInstance(verificationAlgorithm.getKeyAlgorithmName(), "BC");
+                logger.debug("Generating {} key…", verificationAlgorithm);
+                var macKey = keyGenerator.generateKey();
+                parameters.getKeyData().setVerificationKey(ByteBuffer.wrap(macKey.getEncoded()));
+                var mac = Mac.getInstance(verificationAlgorithm.toString(), "BC");
+                mac.init(macKey);
+                verificationCalculator = new MacOutputStream(mac);
+            }
+            stream = new TeeOutputStream(stream, verificationCalculator);
         }
-        performEncryption(in, stream, cipher, secretKey);
-        if (macCalculator != null) {
-            combinedMetadata.setMac(ByteBuffer.wrap(macCalculator.getMac()));
+        logger.debug("Initializing cipher…");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        return new CipherOutputStream(stream, cipher);
+    }
+
+    @Override
+    public void doFinal() throws IOException {
+        if (verificationCalculator != null) {
+            combinedMetadata.setVerification(ByteBuffer.wrap(verificationCalculator.getEncoded()));
         }
         logger.debug("Encoding metadata…");
-        combinedMetadata.setInitializationVector(ByteBuffer.wrap(cipher.getIV()));
-        try (var metadataOut = Files.newBufferedWriter(metadataFile)) {
+        var iv = cipher.getIV();
+        if (iv != null) {
+            combinedMetadata.setInitializationVector(ByteBuffer.wrap(iv));
+        }
+        try (var metadataOut = Files.newBufferedWriter(parameters.getMetadataFile())) {
             mapper.writeValue(metadataOut, combinedMetadata);
         }
         logger.debug("Encoding key…");
         try (var keyOut = Files.newBufferedWriter(parameters.getKeyFile())) {
             mapper.writeValue(keyOut, parameters.getKeyData());
         }
-    }
-
-    private void performEncryption(InputStream in, OutputStream out, Cipher cipher, SecretKey key) throws IOException, InvalidKeyException {
-        logger.debug("Initializing cipher…");
-        cipher.init(Cipher.ENCRYPT_MODE, key);
-        logger.debug("Encrypting file…");
-        try (var cipherOut = new CipherOutputStream(out, cipher)) {
-            in.transferTo(cipherOut);
-        }
-        logger.debug("Encryption complete");
     }
 }

@@ -68,14 +68,14 @@ public class Metadata {
     /**
      * The MAC algorithm.
      */
-    @Option(names = {"--mac-algorithm"})
-    private MacAlgorithm macAlgorithm;
+    @Option(names = {"--verification-algorithm"})
+    private VerificationAlgorithm verificationAlgorithm;
 
     /**
      * The MAC.
      */
-    @Option(names = {"-m", "--mac"}, arity = "0..1")
-    private ByteBuffer mac;
+    @Option(names = {"-v", "--verification"}, arity = "0..1")
+    private ByteBuffer verification;
 
     /**
      * Gets the algorithm of this metadata.
@@ -154,17 +154,17 @@ public class Metadata {
      *
      * @return the mac algorithm
      */
-    public MacAlgorithm getMacAlgorithm() {
-        return macAlgorithm;
+    public VerificationAlgorithm getVerificationAlgorithm() {
+        return verificationAlgorithm;
     }
 
     /**
-     * Sets the macAlgorithm of this metadata.
+     * Sets the verificationAlgorithm of this metadata.
      *
-     * @param macAlgorithm the new macAlgorithm
+     * @param verificationAlgorithm the new verificationAlgorithm
      */
-    public void setMacAlgorithm(MacAlgorithm macAlgorithm) {
-        this.macAlgorithm = macAlgorithm;
+    public void setVerificationAlgorithm(VerificationAlgorithm verificationAlgorithm) {
+        this.verificationAlgorithm = verificationAlgorithm;
     }
 
     /**
@@ -173,18 +173,18 @@ public class Metadata {
      * @return the mac
      */
     @JsonSerialize(using = ByteBufferSerializer.class)
-    public ByteBuffer getMac() {
-        return mac;
+    public ByteBuffer getVerification() {
+        return verification;
     }
 
     /**
      * Sets the mac of this metadata.
      *
-     * @param mac the new mac
+     * @param verification the new mac
      */
     @JsonDeserialize(using = ByteBufferDeserializer.class)
-    public void setMac(ByteBuffer mac) {
-        this.mac = mac;
+    public void setVerification(ByteBuffer verification) {
+        this.verification = verification;
     }
 
     /**
@@ -228,11 +228,11 @@ public class Metadata {
         if (other.initializationVector != null) {
             initializationVector = other.initializationVector;
         }
-        if (other.macAlgorithm != null) {
-            macAlgorithm = other.macAlgorithm;
+        if (other.verificationAlgorithm != null) {
+            verificationAlgorithm = other.verificationAlgorithm;
         }
-        if (other.mac != null) {
-            mac = other.mac;
+        if (other.verification != null) {
+            verification = other.verification;
         }
     }
 
@@ -244,8 +244,8 @@ public class Metadata {
                 ", padding=" + padding +
                 ", keySize=" + keySize +
                 ", initializationVector=" + initializationVector +
-                ", macAlgorithm=" + macAlgorithm +
-                ", mac=" + mac +
+                ", verificationAlgorithm=" + verificationAlgorithm +
+                ", mac=" + verification +
                 '}';
     }
 }

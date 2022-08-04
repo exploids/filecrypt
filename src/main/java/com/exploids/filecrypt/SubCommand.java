@@ -19,5 +19,6 @@ import java.security.NoSuchProviderException;
 public interface SubCommand {
     String outputBaseName(String baseName);
     String companionBaseName(String baseName);
-    void call(Parameters parameters, Metadata combinedMetadata, Cipher cipher, InputStream in, OutputStream out) throws FileCryptException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, InvalidAlgorithmParameterException, CMSException;
+    OutputStream call(Parameters parameters, Metadata combinedMetadata, Cipher cipher, OutputStream out) throws FileCryptException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, InvalidAlgorithmParameterException, CMSException;
+    void doFinal() throws FileCryptException, IOException;
 }
