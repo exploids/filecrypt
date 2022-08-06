@@ -1,12 +1,17 @@
 package com.exploids.filecrypt;
 
+import com.exploids.filecrypt.exception.FileCryptException;
 import com.exploids.filecrypt.exception.InsecureException;
+import com.exploids.filecrypt.exception.InvalidSignatureException;
+import com.exploids.filecrypt.exception.MissingMacKeyException;
 import com.exploids.filecrypt.exception.VerificationFailedException;
 import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Parameters;
+import com.exploids.filecrypt.utility.ConsumingOutputStream;
+import com.exploids.filecrypt.utility.FileCleanup;
 import com.exploids.filecrypt.utility.MacOutputStream;
 import com.exploids.filecrypt.utility.MessageDigestOutputStream;
-import com.exploids.filecrypt.utility.VerificationCalculator;
+import com.exploids.filecrypt.utility.SignatureOutputStream;
 import org.apache.commons.io.output.TeeOutputStream;
 import org.bouncycastle.jcajce.io.CipherOutputStream;
 import org.bouncycastle.util.Arrays;
@@ -21,16 +26,22 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.OutputStream;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
+import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.Signature;
+import java.security.SignatureException;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
 
 public class DecryptionCommand implements SubCommand {
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private Parameters parameters;
     private Cipher cipher;
     private Metadata metadata;
-    private VerificationCalculator verificationCalculator;
+    private ConsumingOutputStream<byte[]> verificationCalculator;
+    private Signature signature;
 
     @Override
     public String outputBaseName(String baseName) {
@@ -43,7 +54,7 @@ public class DecryptionCommand implements SubCommand {
     }
 
     @Override
-    public void init(Parameters parameters, Metadata combinedMetadata, Cipher cipher) {
+    public void init(Parameters parameters, Metadata combinedMetadata, Cipher cipher, FileCleanup cleanup) {
         this.parameters = parameters;
         this.metadata = combinedMetadata;
         this.cipher = cipher;
@@ -54,7 +65,7 @@ public class DecryptionCommand implements SubCommand {
     }
 
     @Override
-    public OutputStream call(OutputStream out) throws InvalidKeyException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, NoSuchProviderException, VerificationFailedException {
+    public OutputStream call(OutputStream out) throws InvalidKeyException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, NoSuchProviderException, FileCryptException, InvalidKeySpecException {
         logger.debug("Decrypting file…");
         var key = new SecretKeySpec(parameters.getKeyData().getCipherKey().array(), metadata.getCipherAlgorithm().toString());
         logger.debug("Initializing {} cipher…", cipher.getAlgorithm());
@@ -65,7 +76,15 @@ public class DecryptionCommand implements SubCommand {
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv.array()));
         }
         logger.debug("Decrypting file…");
-        OutputStream wrappedOut = new CipherOutputStream(out, cipher);
+        var stream = out;
+        if (metadata.getSignature() != null) {
+            signature = Signature.getInstance("SHA256withDSA", "BC");
+            var keyFact = KeyFactory.getInstance("DSA", "BC");
+            var publicKey = keyFact.generatePublic(new X509EncodedKeySpec(metadata.getSignaturePublicKey().array()));
+            signature.initVerify(publicKey);
+            stream = new TeeOutputStream(stream, new SignatureOutputStream(signature));
+        }
+        stream = new CipherOutputStream(stream, cipher);
         if (metadata.getVerification() != null) {
             var verificationAlgorithm = metadata.getVerificationAlgorithm();
             if (verificationAlgorithm.getKeyAlgorithmName() == null) {
@@ -77,28 +96,32 @@ public class DecryptionCommand implements SubCommand {
                 var macKeyBytes = parameters.getKeyData().getVerificationKey();
                 if (macKeyBytes == null) {
                     logger.debug("Missing MAC key");
-                    throw new VerificationFailedException();
+                    throw new MissingMacKeyException();
                 }
                 var macKey = new SecretKeySpec(macKeyBytes.array(), metadata.getVerificationAlgorithm().toString());
                 var mac = Mac.getInstance(metadata.getVerificationAlgorithm().toString(), "BC");
                 mac.init(macKey);
                 verificationCalculator = new MacOutputStream(mac);
             }
-            wrappedOut = new TeeOutputStream(wrappedOut, verificationCalculator);
+            stream = new TeeOutputStream(stream, verificationCalculator);
         }
-        return wrappedOut;
+        return stream;
     }
 
     @Override
-    public void doFinal() throws VerificationFailedException {
+    public void doFinal() throws VerificationFailedException, SignatureException, InvalidSignatureException {
         if (verificationCalculator != null) {
             var expected = metadata.getVerification().array();
-            var actual = verificationCalculator.getEncoded();
+            var actual = verificationCalculator.getResult();
             if (Arrays.areEqual(expected, actual)) {
-                logger.debug("The MAC/hash {} seems to be valid", Hex.toHexString(verificationCalculator.getEncoded()));
+                logger.debug("The MAC/hash {} seems to be valid", Hex.toHexString(verificationCalculator.getResult()));
             } else {
-                logger.error("The MAC/hash does not match (expected {}, got {})", Hex.toHexString(expected), Hex.toHexString(actual));
-                throw new VerificationFailedException();
+                throw new VerificationFailedException(expected, actual);
+            }
+        }
+        if (signature != null) {
+            if (!signature.verify(metadata.getSignature().array())) {
+                throw new InvalidSignatureException();
             }
         }
     }

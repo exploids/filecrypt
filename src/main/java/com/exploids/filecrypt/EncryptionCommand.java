@@ -1,12 +1,13 @@
 package com.exploids.filecrypt;
 
 import com.exploids.filecrypt.exception.InsecureException;
-import com.exploids.filecrypt.model.ExitCode;
 import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Parameters;
+import com.exploids.filecrypt.utility.ConsumingOutputStream;
+import com.exploids.filecrypt.utility.FileCleanup;
 import com.exploids.filecrypt.utility.MacOutputStream;
 import com.exploids.filecrypt.utility.MessageDigestOutputStream;
-import com.exploids.filecrypt.utility.VerificationCalculator;
+import com.exploids.filecrypt.utility.SignatureOutputStream;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.io.output.TeeOutputStream;
 import org.bouncycastle.jcajce.io.CipherOutputStream;
@@ -21,11 +22,17 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
 import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.SignatureException;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 
 public class EncryptionCommand implements SubCommand {
     private final Logger logger = LoggerFactory.getLogger(getClass());
@@ -33,7 +40,9 @@ public class EncryptionCommand implements SubCommand {
     private Parameters parameters;
     private Cipher cipher;
     private Metadata metadata;
-    private VerificationCalculator verificationCalculator;
+    private FileCleanup cleanup;
+    private ConsumingOutputStream<byte[]> verificationCalculator;
+    private Signature signature;
 
     public EncryptionCommand(ObjectMapper mapper) {
         this.mapper = mapper;
@@ -50,10 +59,11 @@ public class EncryptionCommand implements SubCommand {
     }
 
     @Override
-    public void init(Parameters parameters, Metadata combinedMetadata, Cipher cipher) {
+    public void init(Parameters parameters, Metadata combinedMetadata, Cipher cipher, FileCleanup cleanup) {
         this.parameters = parameters;
         this.metadata = combinedMetadata;
         this.cipher = cipher;
+        this.cleanup = cleanup;
     }
 
     @Override
@@ -63,7 +73,7 @@ public class EncryptionCommand implements SubCommand {
     }
 
     @Override
-    public OutputStream call(OutputStream out) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException {
+    public OutputStream call(OutputStream out) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, InvalidKeySpecException {
         var keyFile = parameters.getKeyFile();
         var key = parameters.getKeyData().getCipherKey();
         var algorithm = metadata.getCipherAlgorithm();
@@ -79,10 +89,10 @@ public class EncryptionCommand implements SubCommand {
             metadata.setKeySize(secretKey.getEncoded().length * 8);
             logger.debug("Generated {} bit key", secretKey.getEncoded().length * 8);
             parameters.getKeyData().setCipherKey(ByteBuffer.wrap(secretKey.getEncoded()));
-            logger.info("The key has been written to {}", keyFile.toAbsolutePath());
+            logger.debug("The key has been written to {}.", keyFile.toAbsolutePath());
         } else {
-            logger.debug("Using provided key");
             secretKey = new SecretKeySpec(key.array(), algorithm.toString());
+            logger.debug("Using provided key");
         }
         var stream = out;
         if (metadata.getVerification() != null) {
@@ -102,28 +112,50 @@ public class EncryptionCommand implements SubCommand {
                 verificationCalculator = new MacOutputStream(mac);
             }
             stream = new TeeOutputStream(stream, verificationCalculator);
+            logger.debug("Added verification step");
         }
-        logger.debug("Initializing cipher…");
-        logger.info("Actual key size: {}", secretKey.getEncoded().length * 8);
         cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-        return new CipherOutputStream(stream, cipher);
+        logger.debug("Initialized cipher");
+        stream = new CipherOutputStream(stream, cipher);
+        if (metadata.getSignature() != null) {
+            var encodedPrivateKey = parameters.getSignaturePrivateKey();
+            PrivateKey privateKey;
+            if (encodedPrivateKey == null) {
+                var generator = KeyPairGenerator.getInstance("DSA", "BC");
+                generator.initialize(2048);
+                var keyPair = generator.generateKeyPair();
+                privateKey = keyPair.getPrivate();
+                metadata.setSignaturePublicKey(ByteBuffer.wrap(keyPair.getPublic().getEncoded()));
+                parameters.setSignaturePrivateKey(ByteBuffer.wrap(privateKey.getEncoded()));
+            } else {
+                var keyFact = KeyFactory.getInstance("DSA", "BC");
+                privateKey = keyFact.generatePrivate(new PKCS8EncodedKeySpec(encodedPrivateKey.array()));
+            }
+            signature = Signature.getInstance("SHA256withDSA", "BC");
+            signature.initSign(privateKey);
+            stream = new TeeOutputStream(stream, new SignatureOutputStream(signature));
+        }
+        return stream;
     }
 
     @Override
-    public void doFinal() throws IOException {
+    public void doFinal() throws IOException, SignatureException {
         if (verificationCalculator != null) {
-            metadata.setVerification(ByteBuffer.wrap(verificationCalculator.getEncoded()));
+            metadata.setVerification(ByteBuffer.wrap(verificationCalculator.getResult()));
+        }
+        if (signature != null) {
+            metadata.setSignature(ByteBuffer.wrap(signature.sign()));
         }
         logger.debug("Encoding metadata…");
         var iv = cipher.getIV();
         if (iv != null) {
             metadata.setInitializationVector(ByteBuffer.wrap(iv));
         }
-        try (var metadataOut = Files.newBufferedWriter(parameters.getMetadataFile())) {
+        try (var metadataOut = cleanup.newBufferedWriter(parameters.getMetadataFile())) {
             mapper.writeValue(metadataOut, metadata);
         }
         logger.debug("Encoding key…");
-        try (var keyOut = Files.newBufferedWriter(parameters.getKeyFile())) {
+        try (var keyOut = cleanup.newBufferedWriter(parameters.getKeyFile())) {
             mapper.writeValue(keyOut, parameters.getKeyData());
         }
     }

@@ -1,5 +1,6 @@
 package com.exploids.filecrypt.model;
 
+import com.exploids.filecrypt.serialization.Base64ByteBufferConverter;
 import com.exploids.filecrypt.serialization.ByteBufferDeserializer;
 import com.exploids.filecrypt.serialization.ByteBufferSerializer;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
@@ -96,16 +97,28 @@ public class Metadata {
     private int passwordParallelization;
 
     /**
-     * The MAC algorithm.
+     * The MAC/hash algorithm.
      */
     @Option(names = {"--verification-algorithm"})
     private VerificationAlgorithm verificationAlgorithm;
 
     /**
-     * The MAC.
+     * The MAC/hash.
      */
     @Option(names = {"-v", "--verification"}, arity = "0..1")
     private ByteBuffer verification;
+
+    /**
+     * The signature.
+     */
+    @Option(names = {"--signature"}, arity = "0..1", converter = Base64ByteBufferConverter.class)
+    private ByteBuffer signature;
+
+    /**
+     * The signature.
+     */
+    @Option(names = {"--signature-public-key"}, converter = Base64ByteBufferConverter.class)
+    private ByteBuffer signaturePublicKey;
 
     /**
      * Gets the algorithm of this metadata.
@@ -280,6 +293,44 @@ public class Metadata {
     }
 
     /**
+     * Gets the signature of this metadata.
+     *
+     * @return the signature
+     */
+    public ByteBuffer getSignature() {
+        return signature;
+    }
+
+    /**
+     * Sets the signature of this metadata.
+     *
+     * @param signature the new signature
+     */
+    public void setSignature(ByteBuffer signature) {
+        this.signature = signature;
+    }
+
+    /**
+     * Gets the signaturePublicKey of this metadata.
+     *
+     * @return the signaturePublicKey
+     */
+
+    public ByteBuffer getSignaturePublicKey() {
+        return signaturePublicKey;
+    }
+
+    /**
+     * Sets the signaturePublicKey of this metadata.
+     *
+     * @param signaturePublicKey the new signaturePublicKey
+     */
+
+    public void setSignaturePublicKey(ByteBuffer signaturePublicKey) {
+        this.signaturePublicKey = signaturePublicKey;
+    }
+
+    /**
      * Sets all non-null values from the other metadata.
      *
      * @param other the metadata to read from
@@ -321,6 +372,12 @@ public class Metadata {
         if (other.verification != null) {
             verification = other.verification;
         }
+        if (other.signature != null) {
+            signature = other.signature;
+        }
+        if (other.signaturePublicKey != null) {
+            signaturePublicKey = other.signaturePublicKey;
+        }
     }
 
     @Override
@@ -338,6 +395,8 @@ public class Metadata {
                 ", passwordParallelization=" + passwordParallelization +
                 ", verificationAlgorithm=" + verificationAlgorithm +
                 ", verification=" + verification +
+                ", signature=" + signature +
+                ", signaturePublicKey=" + signaturePublicKey +
                 '}';
     }
 }

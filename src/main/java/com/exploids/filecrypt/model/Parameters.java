@@ -1,7 +1,9 @@
 package com.exploids.filecrypt.model;
 
+import com.exploids.filecrypt.serialization.Base64ByteBufferConverter;
 import picocli.CommandLine;
 
+import java.nio.ByteBuffer;
 import java.nio.file.Path;
 
 public class Parameters {
@@ -25,6 +27,9 @@ public class Parameters {
 
     @CommandLine.Option(names = {"-p", "--password"}, interactive = true)
     private char[] password;
+
+    @CommandLine.Option(names = {"--signature-private-key"}, converter = Base64ByteBufferConverter.class)
+    private ByteBuffer signaturePrivateKey;
 
     public Path getFile() {
         return file;
@@ -80,5 +85,23 @@ public class Parameters {
 
     public void setKeyData(KeyData keyData) {
         this.keyData = keyData;
+    }
+
+    /**
+     * Gets the signaturePrivateKey of this parameters.
+     *
+     * @return the signaturePrivateKey
+     */
+    public ByteBuffer getSignaturePrivateKey() {
+        return signaturePrivateKey;
+    }
+
+    /**
+     * Sets the signaturePrivateKey of this parameters.
+     *
+     * @param signaturePrivateKey the new signaturePrivateKey
+     */
+    public void setSignaturePrivateKey(ByteBuffer signaturePrivateKey) {
+        this.signaturePrivateKey = signaturePrivateKey;
     }
 }

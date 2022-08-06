@@ -1,11 +1,9 @@
 package com.exploids.filecrypt;
 
-import com.exploids.fancyprinter.AnsiPrinter;
-import com.exploids.fancyprinter.Color;
-import com.exploids.fancyprinter.FancyPrinter;
-import com.exploids.fancyprinter.PlainPrinter;
 import com.exploids.filecrypt.exception.FileCryptException;
 import com.exploids.filecrypt.exception.InsecureException;
+import com.exploids.filecrypt.exception.InvalidSignatureException;
+import com.exploids.filecrypt.exception.MissingMacKeyException;
 import com.exploids.filecrypt.exception.VerificationFailedException;
 import com.exploids.filecrypt.model.Algorithm;
 import com.exploids.filecrypt.model.BlockMode;
@@ -19,13 +17,13 @@ import com.exploids.filecrypt.model.VerificationAlgorithm;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.exploids.filecrypt.serialization.SpacedNamingStrategy;
 import com.exploids.filecrypt.utility.ByteCountFormat;
+import com.exploids.filecrypt.utility.FileCleanup;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
-import org.bouncycastle.cms.CMSException;
 import org.bouncycastle.crypto.io.InvalidCipherTextIOException;
 import org.bouncycastle.jcajce.spec.ScryptKeySpec;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
@@ -44,6 +42,8 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -54,11 +54,10 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.Provider;
-import java.security.Security;
 import java.security.SecureRandom;
 import java.security.Security;
+import java.security.SignatureException;
 import java.security.spec.InvalidKeySpecException;
-import java.text.DecimalFormat;
 import java.util.Arrays;
 import java.util.ResourceBundle;
 import java.util.concurrent.Callable;
@@ -81,8 +80,6 @@ public class FileCrypt implements Callable<Integer> {
 
     private final ObjectMapper mapper;
 
-    private final FancyPrinter errorOutput;
-
     static {
         Security.addProvider(new BouncyCastleProvider());
     }
@@ -94,11 +91,6 @@ public class FileCrypt implements Callable<Integer> {
                 .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES))
                 .setPropertyNamingStrategy(new SpacedNamingStrategy())
                 .setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        if (CommandLine.Help.Ansi.AUTO.enabled()) {
-            errorOutput = new AnsiPrinter(System.err);
-        } else {
-            errorOutput = new PlainPrinter(System.err);
-        }
         if (debug) {
             System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
             System.setProperty("org.slf4j.simpleLogger.showThreadName", "true");
@@ -146,34 +138,41 @@ public class FileCrypt implements Callable<Integer> {
             }
         } catch (InvalidCipherTextIOException e) {
             if (e.getCause() instanceof IllegalBlockSizeException) {
-                logger.error("An illegal block size has been encountered. Did you select NO padding, even though your plain text is not block-aligned?");
+                if (combinedMetadata.getPadding() == Padding.NONE) {
+                    logger.error("You selected {} padding which only works for specific file sizes. The file you selected does not seem to have a size that works with this padding mode. Please select a different padding mode to encrypt the file.", combinedMetadata.getPadding());
+                } else {
+                    logger.error("An illegal block size has been encountered.", e);
+                }
             } else {
-                logger.error("Invalid cipher text", e);
-                error("Failed to decrypt the file due to invalid cipher text!");
-                errorHelp("Did you select the correct key?");
+                logger.error("Failed to decrypt the file due to invalid cipher text. Did you specify the correct key?", e);
             }
             return ExitCode.FAILURE;
         } catch (NoSuchFileException e) {
-            logger.error("The file {} does not exist", e.getFile());
+            logger.error("The file {} does not exist.", e.getFile());
             return ExitCode.NO_SUCH_FILE;
         } catch (IOException e) {
-            logger.error("There was an IO error", e);
+            logger.error("There was an input/output error. This issue may be resolved by re-running the command.", e);
             return ExitCode.IO_ERROR;
         } catch (VerificationFailedException e) {
-            logger.error("The file contents could not be authenticated");
-            logger.debug("The MAC/hash does not match", e);
+            logger.error("The file contents could not be authenticated. The expected {} was {}, the actual value is {}.", combinedMetadata.getVerificationAlgorithm(), Hex.toHexString(e.getExpected()), Hex.toHexString(e.getActual()));
+            return ExitCode.VERIFICATION_FAILED;
+        } catch (MissingMacKeyException e) {
+            logger.error("You tried to verify a MAC without specifying the corresponding verification key. Without the key, the file contents cannot be verified. You can still decrypt the file by using the --insecure command line option.");
             return ExitCode.VERIFICATION_FAILED;
         } catch (InsecureException e) {
-            logger.error("Insecure encryption is not allowed");
-            return ExitCode.VERIFICATION_FAILED;
+            logger.error("Insecure encryption is not allowed. If you want to risk insecure encryption, re-run the command with the --insecure command line option.");
+            return ExitCode.INSECURE;
+        } catch (InvalidSignatureException e) {
+            logger.error("The signature could not be verified.");
+            return ExitCode.INVALID_SIGNATURE;
         } catch (NoSuchAlgorithmException | NoSuchProviderException | FileCryptException | NoSuchPaddingException |
-                 InvalidAlgorithmParameterException | InvalidKeySpecException e) {
-            logger.error("An unexpected error occurred", e);
+                 InvalidAlgorithmParameterException | InvalidKeySpecException | SignatureException e) {
+            logger.error("An unexpected error occurred.", e);
             return ExitCode.FAILURE;
         }
     }
 
-    private ExitCode callAndThrow() throws NoSuchAlgorithmException, IOException, NoSuchPaddingException, NoSuchProviderException, FileCryptException, InvalidAlgorithmParameterException, InvalidKeyException, InvalidKeySpecException {
+    private ExitCode callAndThrow() throws NoSuchAlgorithmException, IOException, NoSuchPaddingException, NoSuchProviderException, FileCryptException, InvalidAlgorithmParameterException, InvalidKeyException, InvalidKeySpecException, SignatureException {
         var bouncyCastle = Security.getProvider("BC");
         if (bouncyCastle == null) {
             logger.error("BouncyCastle has not been found");
@@ -216,69 +215,49 @@ public class FileCrypt implements Callable<Integer> {
             output = new Path[]{base.resolveSibling(command.outputBaseName(baseName))};
         }
         prepare();
-        if (!decrypt) {
-            boolean secure = checkSecure();
-            if (!secure && !insecureAllowed) {
-                logger.error("Not all parameters are secure and insecure encryption is not allowed");
-                return ExitCode.INSECURE;
+        try (var cleanup = new FileCleanup()) {
+            command.init(parameters, combinedMetadata, createCipher(combinedMetadata), cleanup);
+            try {
+                command.check();
+            } catch (InsecureException e) {
+                logger.warn("The following parameters are considered insecure: {}", e.getConcerns());
+                if (!insecureAllowed) {
+                    throw e;
+                }
             }
-        }
-        command.init(parameters, combinedMetadata, createCipher(combinedMetadata));
-        try {
-            command.check();
-        } catch (InsecureException e) {
-            logger.warn("The following parameters are considered insecure: {}", e.getConcerns());
-            if (!insecureAllowed) {
-                throw e;
-            }
-        }
-        try (var in = file == null ? System.in : Files.newInputStream(file)) {
-            try (var plainOut = output.length == 0 ? System.out : Files.newOutputStream(output[0])) {
-                try (var out = command.call(plainOut)) {
-                    long size = file == null ? Long.MAX_VALUE : Files.size(file);
-                    long transferred = 0;
-                    byte[] buffer = new byte[IOUtils.DEFAULT_BUFFER_SIZE];
-                    int read;
-                    var lastUpdate = System.currentTimeMillis();
-                    boolean didGiveProgress = false;
-                    while ((read = in.read(buffer)) >= 0) {
-                        out.write(buffer, 0, read);
-                        transferred += read;
-                        if (System.currentTimeMillis() - lastUpdate >= 5000) {
-                            lastUpdate += 5000;
-                            logger.info("Processed {} ({}%)", byteFormat.format(transferred), (int) ((double) transferred / size * 100));
-                            didGiveProgress = true;
-                        }
-                    }
-                    if (didGiveProgress) {
-                        logger.info("Processed {} (100%)", byteFormat.format(transferred));
+            try (var in = file == null ? System.in : Files.newInputStream(file)) {
+                try (var plainOut = output.length == 0 ? System.out : cleanup.newOutputStream(output[0])) {
+                    try (var out = command.call(plainOut)) {
+                        long size = file == null ? Long.MAX_VALUE : Files.size(file);
+                        transferData(in, out, size);
                     }
                 }
             }
+            command.doFinal();
+            cleanup.commit();
+            logger.debug("The output has been written to {}.", output.length == 0 ? "the standard output" : output[0].toAbsolutePath());
         }
-        command.doFinal();
-        logger.info("The output has been written to {}", output.length == 0 ? "the standard output" : output[0].toAbsolutePath());
         return ExitCode.OK;
     }
 
-    private boolean checkSecure() {
-        boolean secure = true;
-//        if (combinedMetadata.getCipherAlgorithm() != Algorithm.AES) {
-//            logger.warn(messages.getString("other.check.algorithm.insecure"), combinedMetadata.getCipherAlgorithm());
-//            secure = false;
-//        }
-        if (combinedMetadata.getBlockMode() == BlockMode.ECB) {
-            logger.warn(messages.getString("other.check.blockMode.insecure"), combinedMetadata.getBlockMode());
-            secure = false;
+    private void transferData(InputStream in, OutputStream out, long size) throws IOException {
+        long transferred = 0;
+        byte[] buffer = new byte[IOUtils.DEFAULT_BUFFER_SIZE];
+        int read;
+        var lastUpdate = System.currentTimeMillis();
+        boolean didGiveProgress = false;
+        while ((read = in.read(buffer)) >= 0) {
+            out.write(buffer, 0, read);
+            transferred += read;
+            if (System.currentTimeMillis() - lastUpdate >= 5000) {
+                lastUpdate += 5000;
+                logger.info("Processed {} ({}%)", byteFormat.format(transferred), (int) ((double) transferred / size * 100));
+                didGiveProgress = true;
+            }
         }
-        if (combinedMetadata.getPadding() == Padding.ZERO_BYTE) {
-            logger.warn(messages.getString("other.check.padding.insecure"), combinedMetadata.getPadding());
-            secure = false;
+        if (didGiveProgress) {
+            logger.info("Processed {} (100%)", byteFormat.format(transferred));
         }
-        if (combinedMetadata.getInitializationVector() != null) {
-            logger.warn(messages.getString("other.check.iv.given"), Hex.toHexString(combinedMetadata.getInitializationVector().array()));
-        }
-        return secure;
     }
 
     public static void main(String... args) {
@@ -364,7 +343,7 @@ public class FileCrypt implements Callable<Integer> {
             if (parameters.getKeyData().getCipherKey() == null) {
                 var passwordAlgorithm = combinedMetadata.getPasswordAlgorithm();
                 var keySize = combinedMetadata.getKeySize();
-                var factory = SecretKeyFactory.getInstance(passwordAlgorithm.getAlgorithmName(keySize, combinedMetadata.getCipherAlgorithm(), combinedMetadata.getBlockMode()),"BC");
+                var factory = SecretKeyFactory.getInstance(passwordAlgorithm.getAlgorithmName(keySize, combinedMetadata.getCipherAlgorithm(), combinedMetadata.getBlockMode()), "BC");
                 SecretKey key;
                 var salt = combinedMetadata.getPasswordSalt().array();
                 var cost = combinedMetadata.getPasswordCost();
@@ -377,16 +356,6 @@ public class FileCrypt implements Callable<Integer> {
             }
             Arrays.fill(password, (char) 0);
         }
-    }
-
-    private void error(String message, Object... parameters) {
-        errorOutput.printf(Color.RED, message, parameters);
-        errorOutput.getPrintStream().println();
-    }
-
-    private void errorHelp(String message, Object... parameters) {
-        errorOutput.printf(Color.YELLOW, message, parameters);
-        errorOutput.getPrintStream().println();
     }
 
     private void listProviders() {

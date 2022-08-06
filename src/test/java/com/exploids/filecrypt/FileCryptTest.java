@@ -229,6 +229,121 @@ public class FileCryptTest {
     }
 
     @Test
+    public void testEncryptSignature() throws IOException {
+        Files.writeString(fileSystem.getPath("hello.txt"), "hello world");
+        assertEquals(ExitCode.OK.getCode(), commandLine.execute("--file=hello.txt", "--signature"));
+        assertTrue(Files.readString(fileSystem.getPath("hello_encrypted_meta.yaml")).contains("signature: "));
+    }
+
+    @Test
+    public void testDecryptSignatureValid() throws IOException {
+        Files.write(fileSystem.getPath("hello_encrypted"), Hex.decode("10eeca27199fadf58a4efc90e0d70db1"));
+        assertEquals(ExitCode.OK.getCode(), commandLine.execute(
+                "--decrypt",
+                "--file=hello_encrypted",
+                "--iv=9fe490f843e7f5567190fd071e240626",
+                "--cipher-key=d7ab511b3a5d03c2e35bfdb313863223da206892491933a6f04abedf92e1aabd",
+                "--signature=MEUCIQDG+bgVHymZ5JAxvS+VHrKHzKJerg7dTdnp+z8niUCxAAIgazkpbQa4YUdXFN/KWoMwY45X" +
+                        "UreTDr/6AVzcMILbiGI=",
+                "--signature-public-key=MIIDRjCCAjkGByqGSM44BAEwggIsAoIBAQCVR1z12T5ZbD/NHZAq3QL0J/XzxyEDE7tF+01bsuX+" +
+                        "HL1njNS73YTJg2vh8xwHd3Ja62wvw4uF9IB2+na82BRsyJpvsvcG3XGYmMIIPcjYlvhAYuLJyU0T" +
+                        "ewVKjYCWrbjVGVI5juyoUqCvEt+D5HWqZdTsDDipVg1WYRhv+Yufyetg7uiwMDdrI2vHO+Os29dP" +
+                        "1hwdJHX6MHe48IBGeIH/fhylb+4GbXlQat5R7btUQ6Vjkn28S6UgCGdGF1yIhZJevGTGFHkGdzSW" +
+                        "mQy3FOxmcwTiYfruM7PL3wCODD+pBlDZfTkJySdb9KyG/8s9A+bfyK2lk0JC3W07zKKkBssLAiEA" +
+                        "+Bg2aLpfxbsGtZgebYt5XTC4l41Dyg7FcuN+CZOal3MCggEAQt67naWz2IzJVuCHh+w/Ogm7pfSL" +
+                        "iJp0qvUxdKoPvn48W4/NelO+9WOw6YVgMolgqVF/QBTTMl/Hlivx4Ek3DXbRMUp2E355Lz8NuFnQ" +
+                        "leSluTICTweezy7wnHl0UrB3DhNQeC7Vfd95SXnc7yPLlvGDBhllxOvJPJxxxWuSWVWnX5TMzxRJ" +
+                        "rEPVhtC+7kMlGwsihzSdaN4NFEQD8T6AL0FG2ILgV68ZtvYnXGZ2yPoOPKJxOjJX/Rsn0GOfaV40" +
+                        "fY0c+ayBmibKmwTLDrm3sDWYjRW7rGUhKlUjnPx+WPrjjXJQq5mR/7yXE0Al/ozgTEOZrZZWm+ka" +
+                        "VG9JeGk8egOCAQUAAoIBAD5Z8LmagRgX5bNi1gxI1UOfDsk3BG2DvhUk7GYOY8Crx7F/PJu1tzmZ" +
+                        "egBeQUqO93hodS8BTfFI/+Fxs65kjcYhbOBQLRXKDV8V/AVYfKHlZZQFkInZTpSpLNxCOmbhzyM+" +
+                        "3v+/K4BduPhtRmZ75H8ei2sGRsLwwbUEHOAiA8p7AD8h7hZG04EL4mNaSU/nhfSw5Tf7yCH1Zj9e" +
+                        "hafgkXI3pHT3GWxeEamsceI9EXPWjKI5GDBvm7S1QhEumVtVhxkgZY0lJCY1BHZeiCHHpHdteiie" +
+                        "/hBg+Qo/zCvnQ0ZGtd5QBWdccpd71Mo5Qfhj7SmyrsEcOfnj8u8f6FZNRvE="));
+    }
+
+    @Test
+    public void testDecryptSignatureManipulated() throws IOException {
+        Files.write(fileSystem.getPath("hello_encrypted"), Hex.decode("ea5c1ad42f7b0e9f30898e05766c27a1"));
+        assertEquals(ExitCode.INVALID_SIGNATURE.getCode(), commandLine.execute(
+                "--decrypt",
+                "--file=hello_encrypted",
+                "--iv=c454f2a2676b6b28e69d1b83ccbae582",
+                "--cipher-key=350982409519fd954e67ef1641820c15c87f6ff36108f98ff6893ec258d62320",
+                "--signature=MEUCIQDG+bgVHymZ5JAxvS+VHrKHzKJerg7dTdnp+z8niUCxAAIgazkpbQa4YUdXFN/KWoMwY45X" +
+                        "UreTDr/6AVzcMILbiGI=",
+                "--signature-public-key=MIIDRjCCAjkGByqGSM44BAEwggIsAoIBAQCVR1z12T5ZbD/NHZAq3QL0J/XzxyEDE7tF+01bsuX+" +
+                        "HL1njNS73YTJg2vh8xwHd3Ja62wvw4uF9IB2+na82BRsyJpvsvcG3XGYmMIIPcjYlvhAYuLJyU0T" +
+                        "ewVKjYCWrbjVGVI5juyoUqCvEt+D5HWqZdTsDDipVg1WYRhv+Yufyetg7uiwMDdrI2vHO+Os29dP" +
+                        "1hwdJHX6MHe48IBGeIH/fhylb+4GbXlQat5R7btUQ6Vjkn28S6UgCGdGF1yIhZJevGTGFHkGdzSW" +
+                        "mQy3FOxmcwTiYfruM7PL3wCODD+pBlDZfTkJySdb9KyG/8s9A+bfyK2lk0JC3W07zKKkBssLAiEA" +
+                        "+Bg2aLpfxbsGtZgebYt5XTC4l41Dyg7FcuN+CZOal3MCggEAQt67naWz2IzJVuCHh+w/Ogm7pfSL" +
+                        "iJp0qvUxdKoPvn48W4/NelO+9WOw6YVgMolgqVF/QBTTMl/Hlivx4Ek3DXbRMUp2E355Lz8NuFnQ" +
+                        "leSluTICTweezy7wnHl0UrB3DhNQeC7Vfd95SXnc7yPLlvGDBhllxOvJPJxxxWuSWVWnX5TMzxRJ" +
+                        "rEPVhtC+7kMlGwsihzSdaN4NFEQD8T6AL0FG2ILgV68ZtvYnXGZ2yPoOPKJxOjJX/Rsn0GOfaV40" +
+                        "fY0c+ayBmibKmwTLDrm3sDWYjRW7rGUhKlUjnPx+WPrjjXJQq5mR/7yXE0Al/ozgTEOZrZZWm+ka" +
+                        "VG9JeGk8egOCAQUAAoIBAD5Z8LmagRgX5bNi1gxI1UOfDsk3BG2DvhUk7GYOY8Crx7F/PJu1tzmZ" +
+                        "egBeQUqO93hodS8BTfFI/+Fxs65kjcYhbOBQLRXKDV8V/AVYfKHlZZQFkInZTpSpLNxCOmbhzyM+" +
+                        "3v+/K4BduPhtRmZ75H8ei2sGRsLwwbUEHOAiA8p7AD8h7hZG04EL4mNaSU/nhfSw5Tf7yCH1Zj9e" +
+                        "hafgkXI3pHT3GWxeEamsceI9EXPWjKI5GDBvm7S1QhEumVtVhxkgZY0lJCY1BHZeiCHHpHdteiie" +
+                        "/hBg+Qo/zCvnQ0ZGtd5QBWdccpd71Mo5Qfhj7SmyrsEcOfnj8u8f6FZNRvE="));
+    }
+
+    @Test
+    public void testDecryptSignatureInvalid() throws IOException {
+        Files.write(fileSystem.getPath("hello_encrypted"), Hex.decode("10eeca27199fadf58a4efc90e0d70db1"));
+        assertEquals(ExitCode.INVALID_SIGNATURE.getCode(), commandLine.execute(
+                "--decrypt",
+                "--file=hello_encrypted",
+                "--iv=9fe490f843e7f5567190fd071e240626",
+                "--cipher-key=d7ab511b3a5d03c2e35bfdb313863223da206892491933a6f04abedf92e1aabd",
+                "--signature=MEUCIFpGEWl8AA6PD4bPDMfRJEZqsZxS+2GWLxrJVaUNGgEWAiEA87+s390Kv+ZY4OYMa4/qFPG5" +
+                        "MpcIm9QRuMAtWoAraeo=",
+                "--signature-public-key=MIIDRjCCAjkGByqGSM44BAEwggIsAoIBAQCVR1z12T5ZbD/NHZAq3QL0J/XzxyEDE7tF+01bsuX+" +
+                        "HL1njNS73YTJg2vh8xwHd3Ja62wvw4uF9IB2+na82BRsyJpvsvcG3XGYmMIIPcjYlvhAYuLJyU0T" +
+                        "ewVKjYCWrbjVGVI5juyoUqCvEt+D5HWqZdTsDDipVg1WYRhv+Yufyetg7uiwMDdrI2vHO+Os29dP" +
+                        "1hwdJHX6MHe48IBGeIH/fhylb+4GbXlQat5R7btUQ6Vjkn28S6UgCGdGF1yIhZJevGTGFHkGdzSW" +
+                        "mQy3FOxmcwTiYfruM7PL3wCODD+pBlDZfTkJySdb9KyG/8s9A+bfyK2lk0JC3W07zKKkBssLAiEA" +
+                        "+Bg2aLpfxbsGtZgebYt5XTC4l41Dyg7FcuN+CZOal3MCggEAQt67naWz2IzJVuCHh+w/Ogm7pfSL" +
+                        "iJp0qvUxdKoPvn48W4/NelO+9WOw6YVgMolgqVF/QBTTMl/Hlivx4Ek3DXbRMUp2E355Lz8NuFnQ" +
+                        "leSluTICTweezy7wnHl0UrB3DhNQeC7Vfd95SXnc7yPLlvGDBhllxOvJPJxxxWuSWVWnX5TMzxRJ" +
+                        "rEPVhtC+7kMlGwsihzSdaN4NFEQD8T6AL0FG2ILgV68ZtvYnXGZ2yPoOPKJxOjJX/Rsn0GOfaV40" +
+                        "fY0c+ayBmibKmwTLDrm3sDWYjRW7rGUhKlUjnPx+WPrjjXJQq5mR/7yXE0Al/ozgTEOZrZZWm+ka" +
+                        "VG9JeGk8egOCAQUAAoIBAD5Z8LmagRgX5bNi1gxI1UOfDsk3BG2DvhUk7GYOY8Crx7F/PJu1tzmZ" +
+                        "egBeQUqO93hodS8BTfFI/+Fxs65kjcYhbOBQLRXKDV8V/AVYfKHlZZQFkInZTpSpLNxCOmbhzyM+" +
+                        "3v+/K4BduPhtRmZ75H8ei2sGRsLwwbUEHOAiA8p7AD8h7hZG04EL4mNaSU/nhfSw5Tf7yCH1Zj9e" +
+                        "hafgkXI3pHT3GWxeEamsceI9EXPWjKI5GDBvm7S1QhEumVtVhxkgZY0lJCY1BHZeiCHHpHdteiie" +
+                        "/hBg+Qo/zCvnQ0ZGtd5QBWdccpd71Mo5Qfhj7SmyrsEcOfnj8u8f6FZNRvE="));
+    }
+
+    @Test
+    public void testDecryptSignatureKeyInvalid() throws IOException {
+        Files.write(fileSystem.getPath("hello_encrypted"), Hex.decode("10eeca27199fadf58a4efc90e0d70db1"));
+        assertEquals(ExitCode.INVALID_SIGNATURE.getCode(), commandLine.execute(
+                "--decrypt",
+                "--file=hello_encrypted",
+                "--iv=9fe490f843e7f5567190fd071e240626",
+                "--cipher-key=d7ab511b3a5d03c2e35bfdb313863223da206892491933a6f04abedf92e1aabd",
+                "--signature=MEUCIQDG+bgVHymZ5JAxvS+VHrKHzKJerg7dTdnp+z8niUCxAAIgazkpbQa4YUdXFN/KWoMwY45X" +
+                        "UreTDr/6AVzcMILbiGI=",
+                "--signature-public-key=MIIDRzCCAjkGByqGSM44BAEwggIsAoIBAQCVR1z12T5ZbD/NHZAq3QL0J/XzxyEDE7tF+01bsuX+" +
+                        "HL1njNS73YTJg2vh8xwHd3Ja62wvw4uF9IB2+na82BRsyJpvsvcG3XGYmMIIPcjYlvhAYuLJyU0T" +
+                        "ewVKjYCWrbjVGVI5juyoUqCvEt+D5HWqZdTsDDipVg1WYRhv+Yufyetg7uiwMDdrI2vHO+Os29dP" +
+                        "1hwdJHX6MHe48IBGeIH/fhylb+4GbXlQat5R7btUQ6Vjkn28S6UgCGdGF1yIhZJevGTGFHkGdzSW" +
+                        "mQy3FOxmcwTiYfruM7PL3wCODD+pBlDZfTkJySdb9KyG/8s9A+bfyK2lk0JC3W07zKKkBssLAiEA" +
+                        "+Bg2aLpfxbsGtZgebYt5XTC4l41Dyg7FcuN+CZOal3MCggEAQt67naWz2IzJVuCHh+w/Ogm7pfSL" +
+                        "iJp0qvUxdKoPvn48W4/NelO+9WOw6YVgMolgqVF/QBTTMl/Hlivx4Ek3DXbRMUp2E355Lz8NuFnQ" +
+                        "leSluTICTweezy7wnHl0UrB3DhNQeC7Vfd95SXnc7yPLlvGDBhllxOvJPJxxxWuSWVWnX5TMzxRJ" +
+                        "rEPVhtC+7kMlGwsihzSdaN4NFEQD8T6AL0FG2ILgV68ZtvYnXGZ2yPoOPKJxOjJX/Rsn0GOfaV40" +
+                        "fY0c+ayBmibKmwTLDrm3sDWYjRW7rGUhKlUjnPx+WPrjjXJQq5mR/7yXE0Al/ozgTEOZrZZWm+ka" +
+                        "VG9JeGk8egOCAQYAAoIBAQCOrPF/B0ZerizvRvjuapGfQVa40fBBcFpgX9GX89ER0IYlA5tLbYu7" +
+                        "12YmFAaFXXb2OrslpB4mzlLO70DcHqh2b2RFdIYxArHAGo28WS1IE30xlaBR0WhD7hHebVgeaJuG" +
+                        "2SPO+zEYfW7xKXSh6oXNyS22BBO04sR7gAJf7WMjCZdUrkazye5wU/jZ9To/q3zh2ktpzlci1fwq" +
+                        "vPAv612J+9YXP2rAk0/4GSqDPyYpB3arc3du5d/Ko51DkM8mDbvbJoGADQcnIxfKq75g20N5tNzw" +
+                        "u5K2DUy9eg5EdL8nCBGOyU1zTsiju1ZqDfjicJefXKogs9Mwja54EE83hLNK"));
+    }
+
+    @Test
     public void testEncryptionMissingInput() {
         assertEquals(ExitCode.NO_SUCH_FILE.getCode(), commandLine.execute("--file=hello.txt"));
     }

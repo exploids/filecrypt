@@ -1,12 +1,11 @@
 package com.exploids.filecrypt.utility;
 
 import javax.crypto.Mac;
-import java.io.IOException;
 
 /**
  * @author Luca Selinski
  */
-public class MacOutputStream extends VerificationCalculator {
+public class MacOutputStream extends ConsumingOutputStream<byte[]> {
     private final Mac mac;
     private byte[] digest;
 
@@ -15,27 +14,27 @@ public class MacOutputStream extends VerificationCalculator {
     }
 
     @Override
-    public void write(int b) throws IOException {
+    public void write(int b) {
         mac.update((byte) b);
     }
 
     @Override
-    public void write(byte[] b) throws IOException {
+    public void write(byte[] b) {
         mac.update(b);
     }
 
     @Override
-    public void write(byte[] b, int off, int len) throws IOException {
+    public void write(byte[] b, int off, int len) {
         mac.update(b, off, len);
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         digest = mac.doFinal();
     }
 
     @Override
-    public byte[] getEncoded() {
+    public byte[] getResult() {
         return digest;
     }
 }
