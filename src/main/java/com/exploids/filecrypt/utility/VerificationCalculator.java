@@ -1,4 +1,4 @@
-package com.exploids.filecrypt;
+package com.exploids.filecrypt.utility;
 
 import java.io.OutputStream;
 

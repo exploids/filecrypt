@@ -19,4 +19,6 @@ module com.exploids.filecrypt {
     opens com.exploids.filecrypt.serialization to info.picocli;
     exports com.exploids.filecrypt.model to com.fasterxml.jackson.databind;
     opens com.exploids.filecrypt.model to info.picocli;
+    exports com.exploids.filecrypt.utility to com.fasterxml.jackson.databind;
+    opens com.exploids.filecrypt.utility to info.picocli;
 }

@@ -1,4 +1,4 @@
-package com.exploids.filecrypt;
+package com.exploids.filecrypt.utility;
 
 import javax.crypto.Mac;
 import java.io.IOException;

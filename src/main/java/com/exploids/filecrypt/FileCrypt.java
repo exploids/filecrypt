@@ -5,17 +5,19 @@ import com.exploids.fancyprinter.Color;
 import com.exploids.fancyprinter.FancyPrinter;
 import com.exploids.fancyprinter.PlainPrinter;
 import com.exploids.filecrypt.exception.FileCryptException;
+import com.exploids.filecrypt.exception.InsecureException;
 import com.exploids.filecrypt.exception.VerificationFailedException;
 import com.exploids.filecrypt.model.Algorithm;
 import com.exploids.filecrypt.model.BlockMode;
 import com.exploids.filecrypt.model.ExitCode;
 import com.exploids.filecrypt.model.KeyData;
-import com.exploids.filecrypt.model.VerificationAlgorithm;
 import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Padding;
 import com.exploids.filecrypt.model.Parameters;
+import com.exploids.filecrypt.model.VerificationAlgorithm;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.exploids.filecrypt.serialization.SpacedNamingStrategy;
+import com.exploids.filecrypt.utility.ByteCountFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -42,8 +44,12 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.*;
-import java.text.DecimalFormat;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.Provider;
+import java.security.Security;
 import java.util.ResourceBundle;
 import java.util.concurrent.Callable;
 
@@ -60,6 +66,8 @@ public class FileCrypt implements Callable<Integer> {
      * The resource bundle that contains all the localized messages to output.
      */
     private final ResourceBundle messages;
+
+    private final ByteCountFormat byteFormat = new ByteCountFormat();
 
     private final ObjectMapper mapper;
 
@@ -104,7 +112,12 @@ public class FileCrypt implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        return callAndCatch().getCode();
+        try {
+            return callAndCatch().getCode();
+        } catch (Exception exception) {
+            logger.error("An uncaught exception occurred", exception);
+            return ExitCode.FAILURE.getCode();
+        }
     }
 
     private ExitCode callAndCatch() {
@@ -114,7 +127,7 @@ public class FileCrypt implements Callable<Integer> {
             if (e.getMessage().equals("no IV set when one expected")) {
                 logger.error("An IV is required, but was not provided. Did you select the correct metadata file?");
                 return ExitCode.FAILURE;
-            } else if(e.getMessage().startsWith("Key length not ")) {
+            } else if (e.getMessage().startsWith("Key length not ")) {
                 logger.error("The key size {} cannot be used with the {} cipher.", combinedMetadata.getKeySize(), combinedMetadata.getCipherAlgorithm());
                 return ExitCode.KEY_ERROR;
             } else {
@@ -130,12 +143,6 @@ public class FileCrypt implements Callable<Integer> {
                 errorHelp("Did you select the correct key?");
             }
             return ExitCode.FAILURE;
-        } catch (InvalidAlgorithmParameterException e) {
-            logger.error("InvalidAlgorithmParameterException", e);
-            return ExitCode.FAILURE;
-        } catch (NoSuchPaddingException e) {
-            logger.error("NoSuchPaddingException", e);
-            return ExitCode.FAILURE;
         } catch (NoSuchFileException e) {
             logger.error("The file {} does not exist", e.getFile());
             return ExitCode.NO_SUCH_FILE;
@@ -146,16 +153,17 @@ public class FileCrypt implements Callable<Integer> {
             logger.error("The file contents could not be authenticated");
             logger.debug("The MAC/hash does not match", e);
             return ExitCode.VERIFICATION_FAILED;
-        } catch (NoSuchAlgorithmException | CMSException | NoSuchProviderException | FileCryptException e) {
+        } catch (InsecureException e) {
+            logger.error("Insecure encryption is not allowed");
+            return ExitCode.VERIFICATION_FAILED;
+        } catch (NoSuchAlgorithmException | NoSuchProviderException | FileCryptException | NoSuchPaddingException |
+                 InvalidAlgorithmParameterException e) {
             logger.error("An unexpected error occurred", e);
-            return ExitCode.FAILURE;
-        } catch (Exception e) {
-            logger.error("An uncaught exception occurred", e);
             return ExitCode.FAILURE;
         }
     }
 
-    private ExitCode callAndThrow() throws InvalidAlgorithmParameterException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, NoSuchPaddingException, CMSException, FileCryptException {
+    private ExitCode callAndThrow() throws NoSuchAlgorithmException, IOException, NoSuchPaddingException, NoSuchProviderException, FileCryptException, InvalidAlgorithmParameterException, InvalidKeyException {
         var bouncyCastle = Security.getProvider("BC");
         if (bouncyCastle == null) {
             logger.error("BouncyCastle has not been found");
@@ -205,9 +213,18 @@ public class FileCrypt implements Callable<Integer> {
                 return ExitCode.INSECURE;
             }
         }
+        command.init(parameters, combinedMetadata, createCipher(combinedMetadata));
+        try {
+            command.check();
+        } catch (InsecureException e) {
+            logger.warn("The following parameters are considered insecure: {}", e.getConcerns());
+            if (!insecureAllowed) {
+                throw e;
+            }
+        }
         try (var in = file == null ? System.in : Files.newInputStream(file)) {
             try (var plainOut = output.length == 0 ? System.out : Files.newOutputStream(output[0])) {
-                try (var out = command.call(parameters, combinedMetadata, createCipher(combinedMetadata), plainOut)) {
+                try (var out = command.call(plainOut)) {
                     long size = file == null ? Long.MAX_VALUE : Files.size(file);
                     long transferred = 0;
                     byte[] buffer = new byte[IOUtils.DEFAULT_BUFFER_SIZE];
@@ -219,12 +236,12 @@ public class FileCrypt implements Callable<Integer> {
                         transferred += read;
                         if (System.currentTimeMillis() - lastUpdate >= 5000) {
                             lastUpdate += 5000;
-                            logger.info("Processed {} ({}%)", formatByteCount(transferred), (int) ((double) transferred / size * 100));
+                            logger.info("Processed {} ({}%)", byteFormat.format(transferred), (int) ((double) transferred / size * 100));
                             didGiveProgress = true;
                         }
                     }
                     if (didGiveProgress) {
-                        logger.info("Processed {} (100%)", formatByteCount(transferred));
+                        logger.info("Processed {} (100%)", byteFormat.format(transferred));
                     }
                 }
             }
@@ -232,13 +249,6 @@ public class FileCrypt implements Callable<Integer> {
         command.doFinal();
         logger.info("The output has been written to {}", output.length == 0 ? "the standard output" : output[0].toAbsolutePath());
         return ExitCode.OK;
-    }
-
-    private String formatByteCount(long size) {
-        if (size <= 0) return "0 B";
-        final String[] units = new String[]{"B", "kB", "MB", "GB", "TB", "PB", "EB"};
-        int digitGroups = (int) (Math.log10(size) / Math.log10(1000));
-        return new DecimalFormat("#,##0.#").format(size / Math.pow(1000, digitGroups)) + " " + units[digitGroups];
     }
 
     private boolean checkSecure() {

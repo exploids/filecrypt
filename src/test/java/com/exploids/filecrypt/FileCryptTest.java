@@ -8,6 +8,7 @@ import com.exploids.filecrypt.model.Padding;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
+import org.apache.commons.io.output.NullOutputStream;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import picocli.CommandLine;
 
 import javax.crypto.NoSuchPaddingException;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.ByteBuffer;
 import java.nio.file.FileSystem;
 import java.nio.file.Files;
@@ -41,7 +43,7 @@ public class FileCryptTest {
         fileSystem = Jimfs.newFileSystem(Configuration.unix());
         fileCrypt = new FileCrypt();
         commandLine = new CommandLine(fileCrypt)
-                // .setOut(new PrintWriter(NullOutputStream.NULL_OUTPUT_STREAM))
+                 .setOut(new PrintWriter(NullOutputStream.NULL_OUTPUT_STREAM))
                 // .setErr(new PrintWriter(NullOutputStream.NULL_OUTPUT_STREAM))
                 .registerConverter(ByteBuffer.class, new HexByteBufferConverter())
                 .registerConverter(Path.class, new CustomPathTypeConverter(fileSystem));

@@ -1,7 +1,6 @@
-package com.exploids.filecrypt;
+package com.exploids.filecrypt.utility;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.security.MessageDigest;
 
 /**
