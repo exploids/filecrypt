@@ -89,6 +89,7 @@ public class EncryptionCommand implements SubCommand {
             stream = new TeeOutputStream(stream, verificationCalculator);
         }
         logger.debug("Initializing cipher…");
+        logger.info("Actual key size: {}", secretKey.getEncoded().length * 8);
         cipher.init(Cipher.ENCRYPT_MODE, secretKey);
         return new CipherOutputStream(stream, cipher);
     }

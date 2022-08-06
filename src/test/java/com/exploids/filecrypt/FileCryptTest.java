@@ -1,10 +1,6 @@
 package com.exploids.filecrypt;
 
-import com.exploids.filecrypt.model.Algorithm;
-import com.exploids.filecrypt.model.BlockMode;
-import com.exploids.filecrypt.model.ExitCode;
-import com.exploids.filecrypt.model.Metadata;
-import com.exploids.filecrypt.model.Padding;
+import com.exploids.filecrypt.model.*;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
@@ -13,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.MethodSource;
 import picocli.CommandLine;
 
 import javax.crypto.NoSuchPaddingException;
@@ -24,8 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
-import java.util.Arrays;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -122,6 +115,21 @@ public class FileCryptTest {
         assertTrue(Files.readString(fileSystem.getPath("hello_encrypted_meta.yaml")).contains("padding: " + padding));
         assertEquals(ExitCode.OK.getCode(), commandLine.execute("--decrypt", "--file=hello_encrypted"));
         assertArrayEquals(new byte[128], Files.readAllBytes(fileSystem.getPath("hello_encrypted_decrypted")));
+    }
+
+    @ParameterizedTest
+    @EnumSource(PasswordAlgorithm.class)
+    public void testPasswordAlgorithm(PasswordAlgorithm passwordAlgorithm) throws IOException {
+        Files.writeString(fileSystem.getPath("hello.txt"), "hello world");
+        assertEquals(ExitCode.OK.getCode(), commandLine.execute("--file=hello.txt", "--password=123456", "--password-algorithm", passwordAlgorithm.toString()));
+        System.out.println(Hex.toHexString(Files.readAllBytes(fileSystem.getPath("hello_encrypted"))));
+        System.out.println(Files.readString(fileSystem.getPath("hello_encrypted_key.yaml")));
+        System.out.println(Files.readString(fileSystem.getPath("hello_encrypted_meta.yaml")));
+        assertTrue(Files.exists(fileSystem.getPath("hello_encrypted")));
+        assertTrue(Files.exists(fileSystem.getPath("hello_encrypted_key.yaml")));
+        assertTrue(Files.readString(fileSystem.getPath("hello_encrypted_meta.yaml")).contains("password algorithm: " + passwordAlgorithm));
+        assertEquals(ExitCode.OK.getCode(), commandLine.execute("--decrypt", "--file=hello_encrypted", "--password=123456"));
+        assertEquals("hello world", Files.readString(fileSystem.getPath("hello_encrypted_decrypted")));
     }
 
     @Test

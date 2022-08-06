@@ -10,10 +10,11 @@ import com.exploids.filecrypt.model.Algorithm;
 import com.exploids.filecrypt.model.BlockMode;
 import com.exploids.filecrypt.model.ExitCode;
 import com.exploids.filecrypt.model.KeyData;
-import com.exploids.filecrypt.model.VerificationAlgorithm;
 import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Padding;
 import com.exploids.filecrypt.model.Parameters;
+import com.exploids.filecrypt.model.PasswordAlgorithm;
+import com.exploids.filecrypt.model.VerificationAlgorithm;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.exploids.filecrypt.serialization.SpacedNamingStrategy;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -24,6 +25,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.bouncycastle.cms.CMSException;
 import org.bouncycastle.crypto.io.InvalidCipherTextIOException;
+import org.bouncycastle.jcajce.spec.ScryptKeySpec;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
@@ -35,6 +37,9 @@ import picocli.CommandLine.Option;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -42,8 +47,16 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.*;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.Provider;
+import java.security.SecureRandom;
+import java.security.Security;
+import java.security.spec.InvalidKeySpecException;
 import java.text.DecimalFormat;
+import java.util.Arrays;
 import java.util.ResourceBundle;
 import java.util.concurrent.Callable;
 
@@ -155,7 +168,7 @@ public class FileCrypt implements Callable<Integer> {
         }
     }
 
-    private ExitCode callAndThrow() throws InvalidAlgorithmParameterException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, NoSuchPaddingException, CMSException, FileCryptException {
+    private ExitCode callAndThrow() throws InvalidAlgorithmParameterException, IOException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, NoSuchPaddingException, CMSException, FileCryptException, InvalidKeySpecException {
         var bouncyCastle = Security.getProvider("BC");
         if (bouncyCastle == null) {
             logger.error("BouncyCastle has not been found");
@@ -268,7 +281,7 @@ public class FileCrypt implements Callable<Integer> {
         System.exit(exitCode);
     }
 
-    private void prepare() throws IOException {
+    private void prepare() throws IOException, NoSuchAlgorithmException, NoSuchProviderException, InvalidKeySpecException {
         combinedMetadata = new Metadata();
         combinedMetadata.setCipherAlgorithm(Algorithm.AES);
         var file = parameters.getFile();
@@ -313,8 +326,49 @@ public class FileCrypt implements Callable<Integer> {
                 }
             }
         }
+        if (combinedMetadata.getKeySize() == 0) {
+            combinedMetadata.setKeySize(256);
+        }
         if (combinedMetadata.getVerificationAlgorithm() == null && combinedMetadata.getVerification() != null) {
             combinedMetadata.setVerificationAlgorithm(VerificationAlgorithm.HMACSHA256);
+        }
+        var password = parameters.getPassword();
+        if (password != null) {
+            if (combinedMetadata.getPasswordAlgorithm() == null) {
+                combinedMetadata.setPasswordAlgorithm(PasswordAlgorithm.SCRYPT);
+            }
+            if (combinedMetadata.getPasswordSalt() == null) {
+                var random = SecureRandom.getInstance("DEFAULT", "BC");
+                var salt = new byte[combinedMetadata.getPasswordAlgorithm().getSaltSize()];
+                random.nextBytes(salt);
+                combinedMetadata.setPasswordSalt(ByteBuffer.wrap(salt));
+            }
+            if (combinedMetadata.getPasswordCost() == 0) {
+                combinedMetadata.setPasswordCost(1024);
+            }
+            if (combinedMetadata.getPasswordAlgorithm() == PasswordAlgorithm.SCRYPT) {
+                if (combinedMetadata.getPasswordBlockSize() == 0) {
+                    combinedMetadata.setPasswordBlockSize(8);
+                }
+                if (combinedMetadata.getPasswordParallelization() == 0) {
+                    combinedMetadata.setPasswordParallelization(4);
+                }
+            }
+            if (parameters.getKeyData().getCipherKey() == null) {
+                var passwordAlgorithm = combinedMetadata.getPasswordAlgorithm();
+                var keySize = combinedMetadata.getKeySize();
+                var factory = SecretKeyFactory.getInstance(passwordAlgorithm.getAlgorithmName(keySize, combinedMetadata.getCipherAlgorithm(), combinedMetadata.getBlockMode()),"BC");
+                SecretKey key;
+                var salt = combinedMetadata.getPasswordSalt().array();
+                var cost = combinedMetadata.getPasswordCost();
+                if (passwordAlgorithm == PasswordAlgorithm.SCRYPT) {
+                    key = factory.generateSecret(new ScryptKeySpec(password, salt, cost, combinedMetadata.getPasswordBlockSize(), combinedMetadata.getPasswordParallelization(), keySize));
+                } else {
+                    key = factory.generateSecret(new PBEKeySpec(password, salt, cost, keySize));
+                }
+                parameters.getKeyData().setCipherKey(ByteBuffer.wrap(key.getEncoded()));
+            }
+            Arrays.fill(password, (char) 0);
         }
     }
 
