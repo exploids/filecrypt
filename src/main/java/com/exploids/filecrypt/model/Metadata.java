@@ -66,6 +66,36 @@ public class Metadata {
     private ByteBuffer initializationVector;
 
     /**
+     * The algorithm for the password.
+     */
+    @Option(names = {"--password-algorithm"})
+    private PasswordAlgorithm passwordAlgorithm;
+
+    /**
+     * The salt for the password.
+     */
+    @Option(names = {"--password-salt"})
+    private ByteBuffer passwordSalt;
+
+    /**
+     * The cost parameter for the password.
+     */
+    @Option(names = {"--password-cost"})
+    private int passwordCost;
+
+    /**
+     * The block size for the password.
+     */
+    @Option(names = {"--password-block-size"})
+    private int passwordBlockSize;
+
+    /**
+     * The parallelization parameter for the password.
+     */
+    @Option(names = {"--password-parallelization"})
+    private int passwordParallelization;
+
+    /**
      * The MAC algorithm.
      */
     @Option(names = {"--verification-algorithm"})
@@ -149,6 +179,48 @@ public class Metadata {
         this.keySize = keySize;
     }
 
+    public PasswordAlgorithm getPasswordAlgorithm() {
+        return passwordAlgorithm;
+    }
+
+    public void setPasswordAlgorithm(PasswordAlgorithm passwordAlgorithm) {
+        this.passwordAlgorithm = passwordAlgorithm;
+    }
+
+    @JsonSerialize(using = ByteBufferSerializer.class)
+    public ByteBuffer getPasswordSalt() {
+        return passwordSalt;
+    }
+
+    @JsonDeserialize(using = ByteBufferDeserializer.class)
+    public void setPasswordSalt(ByteBuffer passwordSalt) {
+        this.passwordSalt = passwordSalt;
+    }
+
+    public int getPasswordCost() {
+        return passwordCost;
+    }
+
+    public void setPasswordCost(int passwordCost) {
+        this.passwordCost = passwordCost;
+    }
+
+    public int getPasswordBlockSize() {
+        return passwordBlockSize;
+    }
+
+    public void setPasswordBlockSize(int passwordBlockSize) {
+        this.passwordBlockSize = passwordBlockSize;
+    }
+
+    public int getPasswordParallelization() {
+        return passwordParallelization;
+    }
+
+    public void setPasswordParallelization(int passwordParallelization) {
+        this.passwordParallelization = passwordParallelization;
+    }
+
     /**
      * Gets the mac algorithm of this metadata.
      *
@@ -228,6 +300,21 @@ public class Metadata {
         if (other.initializationVector != null) {
             initializationVector = other.initializationVector;
         }
+        if (other.passwordAlgorithm != null) {
+            passwordAlgorithm = other.passwordAlgorithm;
+        }
+        if (other.passwordSalt != null) {
+            passwordSalt = other.passwordSalt;
+        }
+        if (other.passwordCost != 0) {
+            passwordCost = other.passwordCost;
+        }
+        if (other.passwordBlockSize != 0) {
+            passwordBlockSize = other.passwordBlockSize;
+        }
+        if (other.passwordParallelization != 0) {
+            passwordParallelization = other.passwordParallelization;
+        }
         if (other.verificationAlgorithm != null) {
             verificationAlgorithm = other.verificationAlgorithm;
         }
@@ -239,13 +326,18 @@ public class Metadata {
     @Override
     public String toString() {
         return "Metadata{" +
-                "algorithm=" + cipherAlgorithm +
+                "cipherAlgorithm=" + cipherAlgorithm +
                 ", blockMode=" + blockMode +
                 ", padding=" + padding +
                 ", keySize=" + keySize +
                 ", initializationVector=" + initializationVector +
+                ", passwordAlgorithm=" + passwordAlgorithm +
+                ", passwordSalt=" + passwordSalt +
+                ", passwordCost=" + passwordCost +
+                ", passwordBlockSize=" + passwordBlockSize +
+                ", passwordParallelization=" + passwordParallelization +
                 ", verificationAlgorithm=" + verificationAlgorithm +
-                ", mac=" + verification +
+                ", verification=" + verification +
                 '}';
     }
 }
