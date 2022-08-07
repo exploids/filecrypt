@@ -58,7 +58,7 @@ public class Metadata {
      * The padding.
      */
     @Option(names = {"--key-size"})
-    private int keySize;
+    private Integer keySize;
 
     /**
      * The initialization vector.
@@ -82,19 +82,19 @@ public class Metadata {
      * The cost parameter for the password.
      */
     @Option(names = {"--password-cost"})
-    private int passwordCost;
+    private Integer passwordCost;
 
     /**
      * The block size for the password.
      */
     @Option(names = {"--password-block-size"})
-    private int passwordBlockSize;
+    private Integer passwordBlockSize;
 
     /**
      * The parallelization parameter for the password.
      */
     @Option(names = {"--password-parallelization"})
-    private int passwordParallelization;
+    private Integer passwordParallelization;
 
     /**
      * The MAC/hash algorithm.
@@ -179,7 +179,7 @@ public class Metadata {
      *
      * @return the key size
      */
-    public int getKeySize() {
+    public Integer getKeySize() {
         return keySize;
     }
 
@@ -188,7 +188,7 @@ public class Metadata {
      *
      * @param keySize the new key size
      */
-    public void setKeySize(int keySize) {
+    public void setKeySize(Integer keySize) {
         this.keySize = keySize;
     }
 
@@ -210,27 +210,27 @@ public class Metadata {
         this.passwordSalt = passwordSalt;
     }
 
-    public int getPasswordCost() {
+    public Integer getPasswordCost() {
         return passwordCost;
     }
 
-    public void setPasswordCost(int passwordCost) {
+    public void setPasswordCost(Integer passwordCost) {
         this.passwordCost = passwordCost;
     }
 
-    public int getPasswordBlockSize() {
+    public Integer getPasswordBlockSize() {
         return passwordBlockSize;
     }
 
-    public void setPasswordBlockSize(int passwordBlockSize) {
+    public void setPasswordBlockSize(Integer passwordBlockSize) {
         this.passwordBlockSize = passwordBlockSize;
     }
 
-    public int getPasswordParallelization() {
+    public Integer getPasswordParallelization() {
         return passwordParallelization;
     }
 
-    public void setPasswordParallelization(int passwordParallelization) {
+    public void setPasswordParallelization(Integer passwordParallelization) {
         this.passwordParallelization = passwordParallelization;
     }
 
@@ -345,7 +345,7 @@ public class Metadata {
         if (other.padding != null) {
             padding = other.padding;
         }
-        if (other.keySize != 0) {
+        if (other.keySize != null) {
             keySize = other.keySize;
         }
         if (other.initializationVector != null) {
@@ -357,13 +357,13 @@ public class Metadata {
         if (other.passwordSalt != null) {
             passwordSalt = other.passwordSalt;
         }
-        if (other.passwordCost != 0) {
+        if (other.passwordCost != null) {
             passwordCost = other.passwordCost;
         }
-        if (other.passwordBlockSize != 0) {
+        if (other.passwordBlockSize != null) {
             passwordBlockSize = other.passwordBlockSize;
         }
-        if (other.passwordParallelization != 0) {
+        if (other.passwordParallelization != null) {
             passwordParallelization = other.passwordParallelization;
         }
         if (other.verificationAlgorithm != null) {

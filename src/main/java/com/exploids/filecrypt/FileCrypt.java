@@ -312,7 +312,7 @@ public class FileCrypt implements Callable<Integer> {
                 }
             }
         }
-        if (combinedMetadata.getKeySize() == 0) {
+        if (combinedMetadata.getKeySize() == null) {
             combinedMetadata.setKeySize(256);
         }
         if (combinedMetadata.getVerificationAlgorithm() == null && combinedMetadata.getVerification() != null) {
@@ -329,14 +329,14 @@ public class FileCrypt implements Callable<Integer> {
                 random.nextBytes(salt);
                 combinedMetadata.setPasswordSalt(ByteBuffer.wrap(salt));
             }
-            if (combinedMetadata.getPasswordCost() == 0) {
+            if (combinedMetadata.getPasswordCost() == null) {
                 combinedMetadata.setPasswordCost(1024);
             }
             if (combinedMetadata.getPasswordAlgorithm() == PasswordAlgorithm.SCRYPT) {
-                if (combinedMetadata.getPasswordBlockSize() == 0) {
+                if (combinedMetadata.getPasswordBlockSize() == null) {
                     combinedMetadata.setPasswordBlockSize(8);
                 }
-                if (combinedMetadata.getPasswordParallelization() == 0) {
+                if (combinedMetadata.getPasswordParallelization() == null) {
                     combinedMetadata.setPasswordParallelization(4);
                 }
             }
