@@ -13,8 +13,6 @@ module com.exploids.filecrypt {
     requires org.apache.commons.compress;
     exports com.exploids.filecrypt to com.fasterxml.jackson.databind;
     opens com.exploids.filecrypt to info.picocli;
-    exports com.exploids.fancyprinter to com.fasterxml.jackson.databind;
-    opens com.exploids.fancyprinter to info.picocli;
     exports com.exploids.filecrypt.serialization to com.fasterxml.jackson.databind;
     opens com.exploids.filecrypt.serialization to info.picocli;
     exports com.exploids.filecrypt.model to com.fasterxml.jackson.databind;
