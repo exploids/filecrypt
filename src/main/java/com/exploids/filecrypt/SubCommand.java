@@ -2,13 +2,12 @@ package com.exploids.filecrypt;
 
 import com.exploids.filecrypt.exception.FileCryptException;
 import com.exploids.filecrypt.exception.InsecureException;
-import com.exploids.filecrypt.exception.VerificationFailedException;
 import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Parameters;
 import com.exploids.filecrypt.utility.FileCleanup;
-import org.bouncycastle.cms.CMSException;
 
 import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.security.InvalidAlgorithmParameterException;
@@ -23,6 +22,6 @@ public interface SubCommand {
     String companionBaseName(String baseName);
     void init(Parameters parameters, Metadata combinedMetadata, Cipher cipher, FileCleanup cleanup);
     void check() throws InsecureException;
-    OutputStream call(OutputStream out) throws InvalidKeyException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, NoSuchProviderException, FileCryptException, InvalidKeySpecException;
+    OutputStream call(SecretKey cipherKey, OutputStream out) throws InvalidKeyException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, NoSuchProviderException, FileCryptException, InvalidKeySpecException;
     void doFinal() throws FileCryptException, IOException, SignatureException;
 }

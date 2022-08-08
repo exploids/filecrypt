@@ -17,6 +17,11 @@ public enum BlockMode {
     CBC,
 
     /**
+     * The Counter mode.
+     */
+    CTR,
+
+    /**
      * The Cipher FeedBack mode.
      */
     CFB,

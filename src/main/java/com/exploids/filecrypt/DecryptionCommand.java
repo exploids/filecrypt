@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.OutputStream;
@@ -65,15 +66,14 @@ public class DecryptionCommand implements SubCommand {
     }
 
     @Override
-    public OutputStream call(OutputStream out) throws InvalidKeyException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, NoSuchProviderException, FileCryptException, InvalidKeySpecException {
+    public OutputStream call(SecretKey cipherKey, OutputStream out) throws InvalidKeyException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, NoSuchProviderException, FileCryptException, InvalidKeySpecException {
         logger.debug("Decrypting file…");
-        var key = new SecretKeySpec(parameters.getKeyData().getCipherKey().array(), metadata.getCipherAlgorithm().toString());
         logger.debug("Initializing {} cipher…", cipher.getAlgorithm());
         var iv = metadata.getInitializationVector();
         if (iv == null) {
-            cipher.init(Cipher.DECRYPT_MODE, key);
+            cipher.init(Cipher.DECRYPT_MODE, cipherKey);
         } else {
-            cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv.array()));
+            cipher.init(Cipher.DECRYPT_MODE, cipherKey, new IvParameterSpec(iv.array()));
         }
         logger.debug("Decrypting file…");
         var stream = out;

@@ -25,7 +25,6 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.bouncycastle.crypto.io.InvalidCipherTextIOException;
-import org.bouncycastle.jcajce.spec.ScryptKeySpec;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
@@ -38,8 +37,6 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.InputStream;
@@ -91,15 +88,7 @@ public class FileCrypt implements Callable<Integer> {
                 .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES))
                 .setPropertyNamingStrategy(new SpacedNamingStrategy())
                 .setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        if (debug) {
-            System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
-            System.setProperty("org.slf4j.simpleLogger.showThreadName", "true");
-            System.setProperty("org.slf4j.simpleLogger.showLogName", "true");
-        }
     }
-
-    @Option(names = {"--debug"})
-    private boolean debug;
 
     @Option(names = {"-d", "--decrypt"})
     private boolean decrypt;
@@ -110,14 +99,15 @@ public class FileCrypt implements Callable<Integer> {
     @CommandLine.ArgGroup(exclusive = false)
     private Parameters parameters;
 
-    private Metadata combinedMetadata;
+    private Metadata metadata;
+    private SecretKey cipherKey;
 
     @Override
     public Integer call() {
         try {
             return callAndCatch().getCode();
         } catch (Exception exception) {
-            logger.error("An uncaught exception occurred", exception);
+            logger.error("An uncaught exception occurred.", exception);
             return ExitCode.FAILURE.getCode();
         }
     }
@@ -130,7 +120,7 @@ public class FileCrypt implements Callable<Integer> {
                 logger.error("An IV is required, but was not provided. Did you select the correct metadata file?");
                 return ExitCode.FAILURE;
             } else if (e.getMessage().startsWith("Key length not ")) {
-                logger.error("The key size {} cannot be used with the {} cipher.", combinedMetadata.getKeySize(), combinedMetadata.getCipherAlgorithm());
+                logger.error("The key size {} cannot be used with the {} cipher.", metadata.getKeySize(), metadata.getCipherAlgorithm());
                 return ExitCode.KEY_ERROR;
             } else {
                 logger.error("The key is invalid.", e);
@@ -138,8 +128,8 @@ public class FileCrypt implements Callable<Integer> {
             }
         } catch (InvalidCipherTextIOException e) {
             if (e.getCause() instanceof IllegalBlockSizeException) {
-                if (combinedMetadata.getPadding() == Padding.NONE) {
-                    logger.error("You selected {} padding which only works for specific file sizes. The file you selected does not seem to have a size that works with this padding mode. Please select a different padding mode to encrypt the file.", combinedMetadata.getPadding());
+                if (metadata.getPadding() == Padding.NONE) {
+                    logger.error("You selected {} padding which only works for specific file sizes. The file you selected does not seem to have a size that works with this padding mode. Please select a different padding mode to encrypt the file.", metadata.getPadding());
                 } else {
                     logger.error("An illegal block size has been encountered.", e);
                 }
@@ -154,7 +144,7 @@ public class FileCrypt implements Callable<Integer> {
             logger.error("There was an input/output error. This issue may be resolved by re-running the command.", e);
             return ExitCode.IO_ERROR;
         } catch (VerificationFailedException e) {
-            logger.error("The file contents could not be authenticated. The expected {} was {}, the actual value is {}.", combinedMetadata.getVerificationAlgorithm(), Hex.toHexString(e.getExpected()), Hex.toHexString(e.getActual()));
+            logger.error("The file contents could not be authenticated. The expected {} was {}, the actual value is {}.", metadata.getVerificationAlgorithm(), Hex.toHexString(e.getExpected()), Hex.toHexString(e.getActual()));
             return ExitCode.VERIFICATION_FAILED;
         } catch (MissingMacKeyException e) {
             logger.error("You tried to verify a MAC without specifying the corresponding verification key. Without the key, the file contents cannot be verified. You can still decrypt the file by using the --insecure command line option.");
@@ -175,15 +165,15 @@ public class FileCrypt implements Callable<Integer> {
     private ExitCode callAndThrow() throws NoSuchAlgorithmException, IOException, NoSuchPaddingException, NoSuchProviderException, FileCryptException, InvalidAlgorithmParameterException, InvalidKeyException, InvalidKeySpecException, SignatureException {
         var bouncyCastle = Security.getProvider("BC");
         if (bouncyCastle == null) {
-            logger.error("BouncyCastle has not been found");
+            logger.error("BouncyCastle has not been found.");
             return ExitCode.FAILURE;
         } else {
-            logger.debug("Found {}", bouncyCastle.getInfo());
+            logger.debug("Found {}.", bouncyCastle.getInfo());
         }
         if (hasUnlimitedStrength()) {
-            logger.debug("Unlimited strength is allowed");
+            logger.debug("Unlimited strength is allowed.");
         } else {
-            logger.error("Unlimited strength is not allowed");
+            logger.error("Unlimited strength is not allowed.");
             return ExitCode.FAILURE;
         }
         SubCommand command;
@@ -216,7 +206,7 @@ public class FileCrypt implements Callable<Integer> {
         }
         prepare();
         try (var cleanup = new FileCleanup()) {
-            command.init(parameters, combinedMetadata, createCipher(combinedMetadata), cleanup);
+            command.init(parameters, metadata, createCipher(metadata), cleanup);
             try {
                 command.check();
             } catch (InsecureException e) {
@@ -225,9 +215,13 @@ public class FileCrypt implements Callable<Integer> {
                     throw e;
                 }
             }
+            var cipherKeyEncoded = parameters.getKeyData().getCipherKey();
+            if (cipherKeyEncoded != null) {
+                cipherKey = new SecretKeySpec(cipherKeyEncoded.array(), metadata.getCipherAlgorithm().toString());
+            }
             try (var in = file == null ? System.in : Files.newInputStream(file)) {
                 try (var plainOut = output.length == 0 ? System.out : cleanup.newOutputStream(output[0])) {
-                    try (var out = command.call(plainOut)) {
+                    try (var out = command.call(cipherKey, plainOut)) {
                         long size = file == null ? Long.MAX_VALUE : Files.size(file);
                         transferData(in, out, size);
                     }
@@ -268,15 +262,15 @@ public class FileCrypt implements Callable<Integer> {
     }
 
     private void prepare() throws IOException, NoSuchAlgorithmException, NoSuchProviderException, InvalidKeySpecException {
-        combinedMetadata = new Metadata();
-        combinedMetadata.setCipherAlgorithm(Algorithm.AES);
+        metadata = new Metadata();
+        metadata.setCipherAlgorithm(Algorithm.AES);
         var file = parameters.getFile();
         if (file != null) {
             var metadataFile = parameters.getMetadataFile();
             logger.debug("Trying to read metadata file {}…", metadataFile.toAbsolutePath());
             try (var metaInput = Files.newBufferedReader(metadataFile)) {
                 var fileMetadata = mapper.readValue(metaInput, Metadata.class);
-                combinedMetadata.setFrom(fileMetadata);
+                metadata.setFrom(fileMetadata);
                 logger.debug("Read metadata file");
             } catch (NoSuchFileException e) {
                 logger.debug("Could not find {}", metadataFile.toAbsolutePath());
@@ -298,61 +292,48 @@ public class FileCrypt implements Callable<Integer> {
         }
         var metadataArguments = parameters.getMetadata();
         if (metadataArguments != null) {
-            combinedMetadata.setFrom(metadataArguments);
+            metadata.setFrom(metadataArguments);
         }
-        if (!combinedMetadata.getCipherAlgorithm().isStream()) {
-            if (combinedMetadata.getBlockMode() == null) {
-                combinedMetadata.setBlockMode(BlockMode.CBC);
+        if (!metadata.getCipherAlgorithm().isStream()) {
+            if (metadata.getBlockMode() == null) {
+                metadata.setBlockMode(BlockMode.CBC);
             }
-            if (combinedMetadata.getPadding() == null) {
-                if (combinedMetadata.getBlockMode() == BlockMode.GCM) {
-                    combinedMetadata.setPadding(Padding.NONE);
+            if (metadata.getPadding() == null) {
+                if (metadata.getBlockMode() == BlockMode.GCM) {
+                    metadata.setPadding(Padding.NONE);
                 } else {
-                    combinedMetadata.setPadding(Padding.PKCS7);
+                    metadata.setPadding(Padding.PKCS7);
                 }
             }
         }
-        if (combinedMetadata.getKeySize() == null) {
-            combinedMetadata.setKeySize(256);
+        if (metadata.getKeySize() == null) {
+            metadata.setKeySize(256);
         }
-        if (combinedMetadata.getVerificationAlgorithm() == null && combinedMetadata.getVerification() != null) {
-            combinedMetadata.setVerificationAlgorithm(VerificationAlgorithm.HMACSHA256);
+        if (metadata.getVerificationAlgorithm() == null && metadata.getVerification() != null) {
+            metadata.setVerificationAlgorithm(VerificationAlgorithm.HMACSHA256);
         }
         var password = parameters.getPassword();
         if (password != null) {
-            if (combinedMetadata.getPasswordAlgorithm() == null) {
-                combinedMetadata.setPasswordAlgorithm(PasswordAlgorithm.SCRYPT);
+            if (metadata.getPasswordAlgorithm() == null) {
+                metadata.setPasswordAlgorithm(PasswordAlgorithm.SCRYPT);
             }
-            if (combinedMetadata.getPasswordSalt() == null) {
+            if (metadata.getPasswordSalt() == null) {
                 var random = SecureRandom.getInstance("DEFAULT", "BC");
-                var salt = new byte[combinedMetadata.getPasswordAlgorithm().getSaltSize()];
+                var salt = new byte[metadata.getPasswordAlgorithm().getSaltSize()];
                 random.nextBytes(salt);
-                combinedMetadata.setPasswordSalt(ByteBuffer.wrap(salt));
+                metadata.setPasswordSalt(ByteBuffer.wrap(salt));
             }
-            if (combinedMetadata.getPasswordCost() == null) {
-                combinedMetadata.setPasswordCost(1024);
-            }
-            if (combinedMetadata.getPasswordAlgorithm() == PasswordAlgorithm.SCRYPT) {
-                if (combinedMetadata.getPasswordBlockSize() == null) {
-                    combinedMetadata.setPasswordBlockSize(8);
+            if (metadata.getPasswordAlgorithm() == PasswordAlgorithm.SCRYPT) {
+                if (metadata.getPasswordBlockSize() == null) {
+                    metadata.setPasswordBlockSize(8);
                 }
-                if (combinedMetadata.getPasswordParallelization() == null) {
-                    combinedMetadata.setPasswordParallelization(4);
+                if (metadata.getPasswordParallelization() == null) {
+                    metadata.setPasswordParallelization(4);
                 }
             }
             if (parameters.getKeyData().getCipherKey() == null) {
-                var passwordAlgorithm = combinedMetadata.getPasswordAlgorithm();
-                var keySize = combinedMetadata.getKeySize();
-                var factory = SecretKeyFactory.getInstance(passwordAlgorithm.getAlgorithmName(keySize, combinedMetadata.getCipherAlgorithm(), combinedMetadata.getBlockMode()), "BC");
-                SecretKey key;
-                var salt = combinedMetadata.getPasswordSalt().array();
-                var cost = combinedMetadata.getPasswordCost();
-                if (passwordAlgorithm == PasswordAlgorithm.SCRYPT) {
-                    key = factory.generateSecret(new ScryptKeySpec(password, salt, cost, combinedMetadata.getPasswordBlockSize(), combinedMetadata.getPasswordParallelization(), keySize));
-                } else {
-                    key = factory.generateSecret(new PBEKeySpec(password, salt, cost, keySize));
-                }
-                parameters.getKeyData().setCipherKey(ByteBuffer.wrap(key.getEncoded()));
+                var passwordKeyGenerator = new PasswordKeyGenerator();
+                cipherKey = passwordKeyGenerator.generate(password, metadata);
             }
             Arrays.fill(password, (char) 0);
         }

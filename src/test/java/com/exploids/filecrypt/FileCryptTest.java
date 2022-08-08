@@ -1,6 +1,11 @@
 package com.exploids.filecrypt;
 
-import com.exploids.filecrypt.model.*;
+import com.exploids.filecrypt.model.Algorithm;
+import com.exploids.filecrypt.model.BlockMode;
+import com.exploids.filecrypt.model.ExitCode;
+import com.exploids.filecrypt.model.Metadata;
+import com.exploids.filecrypt.model.Padding;
+import com.exploids.filecrypt.model.PasswordAlgorithm;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
@@ -24,6 +29,7 @@ import java.security.NoSuchProviderException;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class FileCryptTest {
@@ -36,7 +42,7 @@ public class FileCryptTest {
         fileSystem = Jimfs.newFileSystem(Configuration.unix());
         fileCrypt = new FileCrypt();
         commandLine = new CommandLine(fileCrypt)
-                 .setOut(new PrintWriter(NullOutputStream.NULL_OUTPUT_STREAM))
+                .setOut(new PrintWriter(NullOutputStream.NULL_OUTPUT_STREAM))
                 // .setErr(new PrintWriter(NullOutputStream.NULL_OUTPUT_STREAM))
                 .registerConverter(ByteBuffer.class, new HexByteBufferConverter())
                 .registerConverter(Path.class, new CustomPathTypeConverter(fileSystem));
@@ -100,6 +106,7 @@ public class FileCryptTest {
     public void testEncryptionBlockModes(BlockMode blockMode) throws IOException {
         Files.writeString(fileSystem.getPath("hello.txt"), "hello world");
         assertEquals(ExitCode.OK.getCode(), commandLine.execute("--file=hello.txt", "--block-mode", blockMode.toString(), "--insecure"));
+        System.out.println(Files.readString(fileSystem.getPath("hello_encrypted_meta.yaml")));
         assertTrue(Files.exists(fileSystem.getPath("hello_encrypted")));
         assertTrue(Files.exists(fileSystem.getPath("hello_encrypted_key.yaml")));
         assertTrue(Files.readString(fileSystem.getPath("hello_encrypted_meta.yaml")).contains("block mode: " + blockMode));
@@ -125,10 +132,9 @@ public class FileCryptTest {
         Files.writeString(fileSystem.getPath("hello.txt"), "hello world");
         assertEquals(ExitCode.OK.getCode(), commandLine.execute("--file=hello.txt", "--password=123456", "--password-algorithm", passwordAlgorithm.toString()));
         System.out.println(Hex.toHexString(Files.readAllBytes(fileSystem.getPath("hello_encrypted"))));
-        System.out.println(Files.readString(fileSystem.getPath("hello_encrypted_key.yaml")));
         System.out.println(Files.readString(fileSystem.getPath("hello_encrypted_meta.yaml")));
         assertTrue(Files.exists(fileSystem.getPath("hello_encrypted")));
-        assertTrue(Files.exists(fileSystem.getPath("hello_encrypted_key.yaml")));
+        assertFalse(Files.exists(fileSystem.getPath("hello_encrypted_key.yaml")));
         assertTrue(Files.readString(fileSystem.getPath("hello_encrypted_meta.yaml")).contains("password algorithm: " + passwordAlgorithm));
         assertEquals(ExitCode.OK.getCode(), commandLine.execute("--decrypt", "--file=hello_encrypted", "--password=123456"));
         assertEquals("hello world", Files.readString(fileSystem.getPath("hello_encrypted_decrypted")));

@@ -73,26 +73,21 @@ public class EncryptionCommand implements SubCommand {
     }
 
     @Override
-    public OutputStream call(OutputStream out) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, InvalidKeySpecException {
+    public OutputStream call(SecretKey cipherKey, OutputStream out) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, InvalidKeySpecException {
         var keyFile = parameters.getKeyFile();
-        var key = parameters.getKeyData().getCipherKey();
         var algorithm = metadata.getCipherAlgorithm();
-        SecretKey secretKey;
-        if (key == null) {
+        if (cipherKey == null) {
             logger.debug("Creating {} key generator…", algorithm);
             var keyGenerator = KeyGenerator.getInstance(algorithm.toString(), "BC");
             if (metadata.getKeySize() > 0) {
                 keyGenerator.init(metadata.getKeySize());
             }
             logger.debug("Generating {} key…", algorithm);
-            secretKey = keyGenerator.generateKey();
-            metadata.setKeySize(secretKey.getEncoded().length * 8);
-            logger.debug("Generated {} bit key", secretKey.getEncoded().length * 8);
-            parameters.getKeyData().setCipherKey(ByteBuffer.wrap(secretKey.getEncoded()));
+            cipherKey = keyGenerator.generateKey();
+            metadata.setKeySize(cipherKey.getEncoded().length * 8);
+            logger.debug("Generated {} bit key", cipherKey.getEncoded().length * 8);
+            parameters.getKeyData().setCipherKey(ByteBuffer.wrap(cipherKey.getEncoded()));
             logger.debug("The key has been written to {}.", keyFile.toAbsolutePath());
-        } else {
-            secretKey = new SecretKeySpec(key.array(), algorithm.toString());
-            logger.debug("Using provided key");
         }
         var stream = out;
         if (metadata.getVerification() != null) {
@@ -114,7 +109,7 @@ public class EncryptionCommand implements SubCommand {
             stream = new TeeOutputStream(stream, verificationCalculator);
             logger.debug("Added verification step");
         }
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        cipher.init(Cipher.ENCRYPT_MODE, cipherKey);
         logger.debug("Initialized cipher");
         stream = new CipherOutputStream(stream, cipher);
         if (metadata.getSignature() != null) {
@@ -146,7 +141,7 @@ public class EncryptionCommand implements SubCommand {
         if (signature != null) {
             metadata.setSignature(ByteBuffer.wrap(signature.sign()));
         }
-        logger.debug("Encoding metadata…");
+        logger.debug("Encoding metadata.");
         var iv = cipher.getIV();
         if (iv != null) {
             metadata.setInitializationVector(ByteBuffer.wrap(iv));
@@ -154,9 +149,14 @@ public class EncryptionCommand implements SubCommand {
         try (var metadataOut = cleanup.newBufferedWriter(parameters.getMetadataFile())) {
             mapper.writeValue(metadataOut, metadata);
         }
-        logger.debug("Encoding key…");
-        try (var keyOut = cleanup.newBufferedWriter(parameters.getKeyFile())) {
-            mapper.writeValue(keyOut, parameters.getKeyData());
+        var keyData = parameters.getKeyData();
+        if (keyData.getCipherKey() != null || keyData.getVerificationKey() != null) {
+            logger.debug("Encoding key.");
+            try (var keyOut = cleanup.newBufferedWriter(parameters.getKeyFile())) {
+                mapper.writeValue(keyOut, parameters.getKeyData());
+            }
+        } else {
+            logger.debug("No key data to write.");
         }
     }
 }
