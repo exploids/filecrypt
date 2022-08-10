@@ -13,7 +13,7 @@ public class CustomPathTypeConverter implements CommandLine.ITypeConverter<Path>
     }
 
     @Override
-    public Path convert(String value) throws Exception {
+    public Path convert(String value) {
         return fileSystem.getPath(value);
     }
 }

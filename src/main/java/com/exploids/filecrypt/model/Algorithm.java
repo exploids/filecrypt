@@ -1,6 +1,8 @@
 package com.exploids.filecrypt.model;
 
 /**
+ * A cipher algorithm.
+ *
  * @author Luca Selinski
  */
 public enum Algorithm {
@@ -19,11 +21,19 @@ public enum Algorithm {
      */
     ARC4(true);
 
+    /**
+     * Whether the cipher is a stream cipher.
+     */
+    private final boolean stream;
+
+    /**
+     * Instantiates a new enum constant.
+     *
+     * @param stream whether the cipher is a stream cipher
+     */
     Algorithm(boolean stream) {
         this.stream = stream;
     }
-
-    private final boolean stream;
 
     /**
      * Returns, whether this is a stream cipher.

@@ -1,7 +1,7 @@
 package com.exploids.filecrypt.exception;
 
 /**
- * The super class for all exceptions specifix to filecrypt.
+ * The super class for all exceptions specific to filecrypt.
  *
  * @author Luca Selinski
  */

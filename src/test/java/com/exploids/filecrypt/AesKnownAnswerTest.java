@@ -24,6 +24,7 @@ public class AesKnownAnswerTest {
             while ((entry = in.getNextEntry()) != null) {
                 if (entry.getName().endsWith(".rsp")) {
                     var blockMode = entry.getName().substring(0, 3);
+                    @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
                     var ini = new Ini(CloseShieldInputStream.wrap(in));
                     readValues(ini.get("ENCRYPT"), false, entry.getName(), blockMode, entries);
                     readValues(ini.get("DECRYPT"), true, entry.getName(), blockMode, entries);
@@ -70,6 +71,7 @@ public class AesKnownAnswerTest {
 
     }
 
-    private record TestParameters(BlockMode blockMode, boolean decrypt, byte[] key, byte[] iv, byte[] plainText, byte[] cipherText) {
+    private record TestParameters(BlockMode blockMode, boolean decrypt, byte[] key, byte[] iv, byte[] plainText,
+                                  byte[] cipherText) {
     }
 }

@@ -13,50 +13,43 @@ import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Padding;
 import com.exploids.filecrypt.model.Parameters;
 import com.exploids.filecrypt.model.PasswordAlgorithm;
-import com.exploids.filecrypt.model.VerificationAlgorithm;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.exploids.filecrypt.serialization.SpacedNamingStrategy;
-import com.exploids.filecrypt.utility.ByteCountFormat;
+import com.exploids.filecrypt.step.CipherStep;
+import com.exploids.filecrypt.step.SignatureStep;
+import com.exploids.filecrypt.step.VerificationStep;
+import com.exploids.filecrypt.utility.DataTransfer;
 import com.exploids.filecrypt.utility.FileCleanup;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
-import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.io.IOUtils;
 import org.bouncycastle.crypto.io.InvalidCipherTextIOException;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
+import picocli.CommandLine.ArgGroup;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.security.InvalidAlgorithmParameterException;
+import java.security.GeneralSecurityException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.Provider;
-import java.security.SecureRandom;
 import java.security.Security;
-import java.security.SignatureException;
-import java.security.spec.InvalidKeySpecException;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.ResourceBundle;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 /**
@@ -66,23 +59,24 @@ import java.util.concurrent.Callable;
  */
 @Command(name = "filecrypt", mixinStandardHelpOptions = true, version = "1.0.0", resourceBundle = "com.exploids.filecrypt.Messages")
 public class FileCrypt implements Callable<Integer> {
+    /**
+     * The logger for this class.
+     */
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
     /**
-     * The resource bundle that contains all the localized messages to output.
+     * The object mapper used for (de-)serialization.
      */
-    private final ResourceBundle messages;
-
-    private final ByteCountFormat byteFormat = new ByteCountFormat();
-
     private final ObjectMapper mapper;
 
     static {
         Security.addProvider(new BouncyCastleProvider());
     }
 
+    /**
+     * Creates a new filecrypt application instance.
+     */
     public FileCrypt() {
-        messages = ResourceBundle.getBundle("com.exploids.filecrypt.Messages");
         mapper = new ObjectMapper(new YAMLFactory()
                 .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
                 .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES))
@@ -90,17 +84,39 @@ public class FileCrypt implements Callable<Integer> {
                 .setSerializationInclusion(JsonInclude.Include.NON_NULL);
     }
 
+    /**
+     * Whether the file should be decrypted.
+     */
     @Option(names = {"-d", "--decrypt"})
     private boolean decrypt;
 
-    @Option(names = {"--insecure"})
-    private boolean insecureAllowed;
-
-    @CommandLine.ArgGroup(exclusive = false)
+    /**
+     * All general filecrypt parameters.
+     */
+    @ArgGroup(validate = false, multiplicity = "1")
     private Parameters parameters;
 
+    /**
+     * The combined set of metadata read from the command line and related files.
+     */
     private Metadata metadata;
+
+    /**
+     * The key to use for ciphers.
+     */
     private SecretKey cipherKey;
+
+    /**
+     * Runs the filecrypt CLI.
+     *
+     * @param args all command line arguments
+     */
+    public static void main(String... args) {
+        int exitCode = new CommandLine(new FileCrypt())
+                .registerConverter(ByteBuffer.class, new HexByteBufferConverter())
+                .execute(args);
+        System.exit(exitCode);
+    }
 
     @Override
     public Integer call() {
@@ -112,6 +128,11 @@ public class FileCrypt implements Callable<Integer> {
         }
     }
 
+    /**
+     * Executes filecrypt, catching most known exceptions and handling them appropriately.
+     *
+     * @return the exit code
+     */
     private ExitCode callAndCatch() {
         try {
             return callAndThrow();
@@ -134,7 +155,7 @@ public class FileCrypt implements Callable<Integer> {
                     logger.error("An illegal block size has been encountered.", e);
                 }
             } else {
-                logger.error("Failed to decrypt the file due to invalid cipher text. Did you specify the correct key?", e);
+                logger.error("Failed to decrypt the file due to invalid cipher text. Did you specify the correct key or password?", e);
             }
             return ExitCode.FAILURE;
         } catch (NoSuchFileException e) {
@@ -155,18 +176,81 @@ public class FileCrypt implements Callable<Integer> {
         } catch (InvalidSignatureException e) {
             logger.error("The signature could not be verified.");
             return ExitCode.INVALID_SIGNATURE;
-        } catch (NoSuchAlgorithmException | NoSuchProviderException | FileCryptException | NoSuchPaddingException |
-                 InvalidAlgorithmParameterException | InvalidKeySpecException | SignatureException e) {
+        } catch (FileCryptException | GeneralSecurityException e) {
             logger.error("An unexpected error occurred.", e);
             return ExitCode.FAILURE;
         }
     }
 
-    private ExitCode callAndThrow() throws NoSuchAlgorithmException, IOException, NoSuchPaddingException, NoSuchProviderException, FileCryptException, InvalidAlgorithmParameterException, InvalidKeyException, InvalidKeySpecException, SignatureException {
+    /**
+     * Executes filecrypt, throwing exceptions.
+     *
+     * @return the exit code
+     * @throws GeneralSecurityException if some parameters are inavlid
+     * @throws IOException              if an I/O error occurs
+     * @throws FileCryptException       if a filecrypt specific error occurs
+     */
+    private ExitCode callAndThrow() throws GeneralSecurityException, IOException, FileCryptException {
+        if (!checkPreconditions()) {
+            return ExitCode.FAILURE;
+        }
+        prepare();
+        var file = parameters.getFile();
+        var output = parameters.getOutput();
+        var steps = new ArrayList<>(List.of(
+                new SignatureStep(),
+                new CipherStep(),
+                new VerificationStep()
+        ));
+        var cipher = createCipher(metadata, parameters.getPassword() != null);
+        var cipherKeyEncoded = parameters.getKeyData().getCipherKey();
+        if (cipherKeyEncoded != null) {
+            cipherKey = new SecretKeySpec(cipherKeyEncoded.array(), metadata.getCipherAlgorithm().toString());
+        }
+        if (!decrypt) {
+            Collections.reverse(steps);
+        }
+        var actions = steps.stream()
+                .filter(step -> step.applies(metadata))
+                .map(step -> step.buildAction(parameters, metadata, cipher, cipherKey, decrypt))
+                .toList();
+        for (var action : actions) {
+            action.begin();
+        }
+        try (var cleanup = new FileCleanup()) {
+            try (var in = Files.newInputStream(file)) {
+                try (var plainOut = cleanup.newOutputStream(output)) {
+                    var stream = plainOut;
+                    for (var action : actions) {
+                        stream = action.call(stream);
+                    }
+                    try (var out = stream) {
+                        var size = Files.size(file);
+                        var dataTransfer = new DataTransfer();
+                        dataTransfer.transferData(in, out, size);
+                    }
+                }
+            }
+            for (var action : actions) {
+                action.end(mapper, cleanup);
+            }
+            cleanup.commit();
+            logger.debug("The output has been written to {}.", output.toAbsolutePath());
+        }
+        return ExitCode.OK;
+    }
+
+    /**
+     * Checks whether bouncy castle is properly installed.
+     *
+     * @return true if all preconditions are met
+     * @throws NoSuchAlgorithmException if unlimited strength cannot be tested
+     */
+    private boolean checkPreconditions() throws NoSuchAlgorithmException {
         var bouncyCastle = Security.getProvider("BC");
         if (bouncyCastle == null) {
             logger.error("BouncyCastle has not been found.");
-            return ExitCode.FAILURE;
+            return false;
         } else {
             logger.debug("Found {}.", bouncyCastle.getInfo());
         }
@@ -174,202 +258,98 @@ public class FileCrypt implements Callable<Integer> {
             logger.debug("Unlimited strength is allowed.");
         } else {
             logger.error("Unlimited strength is not allowed.");
-            return ExitCode.FAILURE;
+            return false;
         }
-        SubCommand command;
-        if (decrypt) {
-            command = new DecryptionCommand();
-        } else {
-            command = new EncryptionCommand(mapper);
-        }
+        return true;
+    }
+
+    /**
+     * Collects metadata and keys from various sources.
+     *
+     * @throws IOException              if an i/O error occurs
+     * @throws GeneralSecurityException if some parameters are invalid
+     */
+    private void prepare() throws IOException, GeneralSecurityException {
         var file = parameters.getFile();
-        String baseName;
-        Path base;
-        if (file == null) {
-            baseName = "stdin";
-            base = Paths.get(baseName);
-        } else {
-            baseName = FilenameUtils.removeExtension(file.getFileName().toString());
-            base = file;
-        }
-        var metadataFile = parameters.getMetadataFile();
-        if (metadataFile == null) {
-            parameters.setMetadataFile(base.resolveSibling(command.companionBaseName(baseName) + "_meta.yaml"));
-        }
-        var keyFile = parameters.getKeyFile();
-        if (keyFile == null) {
-            parameters.setKeyFile(base.resolveSibling(command.companionBaseName(baseName) + "_key.yaml"));
-        }
         var output = parameters.getOutput();
+        var baseName = file.getFileName().toString();
+        String outputBaseName;
         if (output == null) {
-            output = new Path[]{base.resolveSibling(command.outputBaseName(baseName))};
-        }
-        prepare();
-        try (var cleanup = new FileCleanup()) {
-            command.init(parameters, metadata, createCipher(metadata), cleanup);
-            try {
-                command.check();
-            } catch (InsecureException e) {
-                logger.warn("The following parameters are considered insecure: {}", e.getConcerns());
-                if (!insecureAllowed) {
-                    throw e;
+            if (decrypt) {
+                if (baseName.endsWith(".bin")) {
+                    outputBaseName = "decrypted_" + baseName.substring(0, baseName.length() - 4);
+                } else {
+                    outputBaseName = "decrypted_" + baseName;
                 }
+            } else {
+                outputBaseName = baseName + ".bin";
             }
-            var cipherKeyEncoded = parameters.getKeyData().getCipherKey();
-            if (cipherKeyEncoded != null) {
-                cipherKey = new SecretKeySpec(cipherKeyEncoded.array(), metadata.getCipherAlgorithm().toString());
-            }
-            try (var in = file == null ? System.in : Files.newInputStream(file)) {
-                try (var plainOut = output.length == 0 ? System.out : cleanup.newOutputStream(output[0])) {
-                    try (var out = command.call(cipherKey, plainOut)) {
-                        long size = file == null ? Long.MAX_VALUE : Files.size(file);
-                        transferData(in, out, size);
-                    }
-                }
-            }
-            command.doFinal();
-            cleanup.commit();
-            logger.debug("The output has been written to {}.", output.length == 0 ? "the standard output" : output[0].toAbsolutePath());
+            parameters.setOutput(file.resolveSibling(outputBaseName));
+        } else {
+            outputBaseName = output.getFileName().toString();
         }
-        return ExitCode.OK;
-    }
-
-    private void transferData(InputStream in, OutputStream out, long size) throws IOException {
-        long transferred = 0;
-        byte[] buffer = new byte[IOUtils.DEFAULT_BUFFER_SIZE];
-        int read;
-        var lastUpdate = System.currentTimeMillis();
-        boolean didGiveProgress = false;
-        while ((read = in.read(buffer)) >= 0) {
-            out.write(buffer, 0, read);
-            transferred += read;
-            if (System.currentTimeMillis() - lastUpdate >= 5000) {
-                lastUpdate += 5000;
-                logger.info("Processed {} ({}%)", byteFormat.format(transferred), (int) ((double) transferred / size * 100));
-                didGiveProgress = true;
-            }
+        var metadataFileGiven = parameters.getMetadataFile();
+        var metadataFile = metadataFileGiven;
+        if (metadataFileGiven == null) {
+            metadataFile = file.resolveSibling(baseName + ".meta.yaml");
+            parameters.setMetadataFile(file.resolveSibling(outputBaseName + ".meta.yaml"));
         }
-        if (didGiveProgress) {
-            logger.info("Processed {} (100%)", byteFormat.format(transferred));
+        var keyFileGiven = parameters.getKeyFile();
+        var keyFile = keyFileGiven;
+        if (keyFileGiven == null) {
+            keyFile = file.resolveSibling(baseName + ".key.yaml");
+            parameters.setKeyFile(file.resolveSibling(outputBaseName + ".key.yaml"));
         }
-    }
-
-    public static void main(String... args) {
-        int exitCode = new CommandLine(new FileCrypt())
-                .registerConverter(ByteBuffer.class, new HexByteBufferConverter())
-                .execute(args);
-        System.exit(exitCode);
-    }
-
-    private void prepare() throws IOException, NoSuchAlgorithmException, NoSuchProviderException, InvalidKeySpecException {
         metadata = new Metadata();
-        metadata.setCipherAlgorithm(Algorithm.AES);
-        var file = parameters.getFile();
-        if (file != null) {
-            var metadataFile = parameters.getMetadataFile();
-            logger.debug("Trying to read metadata file {}…", metadataFile.toAbsolutePath());
-            try (var metaInput = Files.newBufferedReader(metadataFile)) {
-                var fileMetadata = mapper.readValue(metaInput, Metadata.class);
-                metadata.setFrom(fileMetadata);
-                logger.debug("Read metadata file");
-            } catch (NoSuchFileException e) {
-                logger.debug("Could not find {}", metadataFile.toAbsolutePath());
+        logger.debug("Trying to read metadata file {}…", metadataFile.toAbsolutePath());
+        try (var metaInput = Files.newBufferedReader(metadataFile)) {
+            var fileMetadata = mapper.readValue(metaInput, Metadata.class);
+            metadata.setFrom(fileMetadata);
+            logger.debug("Read metadata file");
+        } catch (NoSuchFileException e) {
+            logger.debug("Could not find {}", metadataFile.toAbsolutePath());
+            if (metadataFileGiven != null) {
+                throw e;
             }
-            var keyFile = parameters.getKeyFile();
-            logger.debug("Trying to read key file {}…", keyFile.toAbsolutePath());
-            try (var in = Files.newBufferedReader(keyFile)) {
-                var keyData = mapper.readValue(in, KeyData.class);
-                if (parameters.getKeyData().getCipherKey() == null) {
-                    parameters.getKeyData().setCipherKey(keyData.getCipherKey());
-                }
-                if (parameters.getKeyData().getVerificationKey() == null) {
-                    parameters.getKeyData().setVerificationKey(keyData.getVerificationKey());
-                }
-                logger.debug("Read key file");
-            } catch (NoSuchFileException e) {
-                logger.debug("Could not find {}", metadataFile.toAbsolutePath());
+        }
+        logger.debug("Trying to read key file {}…", keyFile.toAbsolutePath());
+        try (var in = Files.newBufferedReader(keyFile)) {
+            var keyData = mapper.readValue(in, KeyData.class);
+            if (parameters.getKeyData().getCipherKey() == null) {
+                parameters.getKeyData().setCipherKey(keyData.getCipherKey());
+            }
+            if (parameters.getKeyData().getVerificationKey() == null) {
+                parameters.getKeyData().setVerificationKey(keyData.getVerificationKey());
+            }
+            logger.debug("Read key file");
+        } catch (NoSuchFileException e) {
+            logger.debug("Could not find {}", metadataFile.toAbsolutePath());
+            if (keyFileGiven != null) {
+                throw e;
             }
         }
         var metadataArguments = parameters.getMetadata();
         if (metadataArguments != null) {
             metadata.setFrom(metadataArguments);
         }
-        if (!metadata.getCipherAlgorithm().isStream()) {
-            if (metadata.getBlockMode() == null) {
-                metadata.setBlockMode(BlockMode.CBC);
-            }
-            if (metadata.getPadding() == null) {
-                if (metadata.getBlockMode() == BlockMode.GCM) {
-                    metadata.setPadding(Padding.NONE);
-                } else {
-                    metadata.setPadding(Padding.PKCS7);
-                }
-            }
-        }
-        if (metadata.getKeySize() == null) {
-            metadata.setKeySize(256);
-        }
-        if (metadata.getVerificationAlgorithm() == null && metadata.getVerification() != null) {
-            metadata.setVerificationAlgorithm(VerificationAlgorithm.HMACSHA256);
-        }
+        var generator = new DefaultParameterGenerator();
         var password = parameters.getPassword();
+        generator.generate(metadata, password != null);
         if (password != null) {
-            if (metadata.getPasswordAlgorithm() == null) {
-                metadata.setPasswordAlgorithm(PasswordAlgorithm.SCRYPT);
-            }
-            if (metadata.getPasswordSalt() == null) {
-                var random = SecureRandom.getInstance("DEFAULT", "BC");
-                var salt = new byte[metadata.getPasswordAlgorithm().getSaltSize()];
-                random.nextBytes(salt);
-                metadata.setPasswordSalt(ByteBuffer.wrap(salt));
-            }
-            if (metadata.getPasswordAlgorithm() == PasswordAlgorithm.SCRYPT) {
-                if (metadata.getPasswordBlockSize() == null) {
-                    metadata.setPasswordBlockSize(8);
-                }
-                if (metadata.getPasswordParallelization() == null) {
-                    metadata.setPasswordParallelization(4);
-                }
-            }
             if (parameters.getKeyData().getCipherKey() == null) {
-                var passwordKeyGenerator = new PasswordKeyGenerator();
-                cipherKey = passwordKeyGenerator.generate(password, metadata);
+                var passwordKeyGenerator = new PasswordKeyGenerator(3000);
+                cipherKey = passwordKeyGenerator.generate(password, algorithmName(metadata.getPasswordAlgorithm(), metadata.getKeySize(), metadata.getCipherAlgorithm(), metadata.getBlockMode()), metadata);
             }
             Arrays.fill(password, (char) 0);
         }
     }
 
-    private void listProviders() {
-        Provider[] installedProvs = Security.getProviders();
-        for (var provider : installedProvs) {
-            System.out.print(provider.getName());
-            System.out.print(": ");
-            System.out.print(provider.getInfo());
-            System.out.println();
-            if ("BC".equals(provider.getName())) {
-                providerDetails(provider);
-            }
-        }
-    }
-
-    private void providerDetails(Provider provider) {
-        for (Object o : provider.keySet()) {
-            String entry = (String) o;
-            boolean isAlias = false;
-            if (entry.startsWith("Alg.Alias")) {
-                isAlias = true;
-                entry = entry.substring("Alg.Alias".length() + 1);
-            }
-            String serviceName = entry.substring(0, entry.indexOf('.'));
-            String name = entry.substring(serviceName.length() + 1);
-            System.out.print("  " + serviceName + ": " + name);
-            if (isAlias) {
-                System.out.print(" (alias for " + provider.get("Alg.Alias." + entry) + ")");
-            }
-            System.out.println();
-        }
-    }
-
+    /**
+     * Checks whether unlimited strength is allowed.
+     *
+     * @return true, if unlimited strength is allowed, otherwise false
+     * @throws NoSuchAlgorithmException if unlimited strength cannot be tested
+     */
     public boolean hasUnlimitedStrength() throws NoSuchAlgorithmException {
         try {
             Cipher cipher = Cipher.getInstance("Blowfish/ECB/NoPadding", "BC");
@@ -385,19 +365,43 @@ public class FileCrypt implements Callable<Integer> {
     /**
      * Creates the {@link Cipher} described by the {@link Metadata}.
      *
-     * @param metadata the metadata
+     * @param metadata      the metadata
+     * @param passwordBased whether the encryption is password based
      * @return the cipher
-     * @throws NoSuchPaddingException
-     * @throws NoSuchAlgorithmException
+     * @throws GeneralSecurityException if some parameters are invalid
      */
-    Cipher createCipher(Metadata metadata) throws NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException {
+    private Cipher createCipher(Metadata metadata, boolean passwordBased) throws GeneralSecurityException {
+        var cipherAlgorithm = metadata.getCipherAlgorithm();
+        var passwordAlgorithm = metadata.getPasswordAlgorithm();
+        var blockMode = metadata.getBlockMode();
         String cipherName;
-        if (metadata.getCipherAlgorithm().isStream()) {
-            cipherName = metadata.getCipherAlgorithm().toString();
+        if (passwordBased && passwordAlgorithm != PasswordAlgorithm.SCRYPT) {
+            cipherName = algorithmName(passwordAlgorithm, metadata.getKeySize(), cipherAlgorithm, blockMode);
+        } else if (cipherAlgorithm.isStream()) {
+            cipherName = cipherAlgorithm.toString();
         } else {
-            cipherName = String.format("%s/%s/%s", metadata.getCipherAlgorithm(), metadata.getBlockMode(), metadata.getPadding().getAlgorithmName());
+            cipherName = String.format("%s/%s/%s", cipherAlgorithm, blockMode, metadata.getPadding().getPaddingName());
         }
-        logger.debug("Creating {} cipher…", cipherName);
+        logger.debug("Creating {} cipher.", cipherName);
         return Cipher.getInstance(cipherName, "BC");
+    }
+
+    /**
+     * Builds the algorithm name for bouncy castle.
+     *
+     * @param passwordAlgorithm the password algorithm
+     * @param keySize           the key size
+     * @param cipherAlgorithm   the cipher algorithm
+     * @param blockMode         the cipher block mode
+     * @return the algorithm name
+     */
+    private String algorithmName(PasswordAlgorithm passwordAlgorithm, int keySize, Algorithm cipherAlgorithm, BlockMode blockMode) {
+        if (passwordAlgorithm == PasswordAlgorithm.SCRYPT) {
+            return "SCRYPT";
+        } else if (cipherAlgorithm.isStream()) {
+            return String.format("PBEWith%sAnd%dBit%s", passwordAlgorithm, keySize, cipherAlgorithm);
+        } else {
+            return String.format("PBEWith%sAnd%dBit%s-%s-BC", passwordAlgorithm, keySize, cipherAlgorithm, blockMode);
+        }
     }
 }

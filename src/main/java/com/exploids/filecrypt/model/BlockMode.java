@@ -32,11 +32,6 @@ public enum BlockMode {
     OFB,
 
     /**
-     * The Cipher Text Stealing mode.
-     */
-    CTS,
-
-    /**
      * The Galois/Counter Mode.
      */
     GCM,

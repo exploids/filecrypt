@@ -2,46 +2,100 @@
 
 A tool to encrypt and decrypt files.
 
-## Example usage
+```shell
+filecrypt --help
+```
 
-### Symmetric key
+## Symmetric key
 
-#### Encrypting
+### Encrypting
 
 To encrypt the file *secret.txt*, run the following command:
 
 ```shell
-filecrypt --file secret.txt
-# or shorter:
-filecrypt -f secret.txt
+filecrypt secret.txt
 ```
 
 This will result in 3 files:
 
-1. The encrypted file *secret_encrypted*
-2. A key file *secret_encrypted_key.yaml*
-3. A metadata file *secret_encrypted_meta.yaml*
+1. The encrypted file *secret.txt.bin*
+2. A key file *secret.txt.bin.key.yaml*
+3. A metadata file *secret.txt.bin.meta.yaml*
 
-The actual data is contained in *secret_encrypted*.
-To decrypt *secret_encrypted*, the key contained in *secret_encrypted_key.yaml* is needed.
-The file *secret_encrypted_meta.yaml* contains all the other necessary parameters to decrypt the file.
+The actual data is contained in *secret.txt.bin*.
+To decrypt *secret.txt.bin*, the key contained in *secret.txt.bin.key.yaml* is needed.
+The file *secret.txt.bin.meta.yaml* contains all the other necessary parameters to decrypt the file.
 
-#### Decrypting
+### Decrypting
 
-In order to decrypt the file *secret_encrypted*, use the following command:
+In order to decrypt the file *secret.txt.bin*, use the following command:
 
 ```shell
-filecrypt --decrypt --file secret_encrypted
-# or shorter:
-filecrypt -df secret_encrypted
+filecrypt secret.txt.bin --decrypt
 ```
 
-The result is the decrypted file *secret_encrypted_decrypted*.
-This command expects the files *secret_encrypted_key.yaml* and *secret_encrypted_meta.yaml* to be present.
+The result is the decrypted file *decrypted_secret.txt*.
+This command expects the files *secret.txt.bin.key.yaml* and *secret.txt.bin.meta.yaml* to be present.
 If your key file and metadata file have different names, you have to specify them explicitly:
 
 ```shell
-filecrypt --decrypt --file secret_encrypted --key-file secret_encrypted_key.yaml --metadata-file secret_encrypted_meta.yaml
-# or shorter:
-filecrypt -df secret_encrypted --key-file secret_encrypted_key.yaml --metadata-file secret_encrypted_meta.yaml
+filecrypt
+secret.txt.bin
+--decrypt
+--key-file=secret.txt.bin.key.yaml
+--metadata=secret.txt.bin.meta.yaml
+```
+
+## Password based
+
+### Encrypting
+
+To encrypt *secret.txt* using a password, run the following command:
+
+```shell
+filecrypt secret.txt --password
+```
+
+You will be asked for a password which you need to enter.
+If you want to specify the password via the command line arguments,
+that is possible as well:
+
+```shell
+filecrypt secret.txt --password=supersecret
+```
+
+### Decrypting
+
+To decrypt the resulting *secret.txt.bin*, you need to enter the password again.
+
+```shell
+filecrypt secret.txt --decrypt --password
+```
+
+## Verifying file contents
+
+If you want to verify that a file has not been corrupted, use the `--verification` option when encrypting.
+
+```shell
+filecrypt secret.txt --verification
+```
+
+As long as you keep the metadata file, the file contents will be verified automatically on decryption.
+
+```shell
+filecrypt secret.txt --decrypt
+```
+
+## Signing file contents
+
+If you want to sign the file contents, use the `--signature` option when encrypting.
+
+```shell
+filecrypt secret.txt --signature
+```
+
+As long as you keep the metadata file, the signature will be verified automatically on decryption.
+
+```shell
+filecrypt secret.txt --decrypt
 ```

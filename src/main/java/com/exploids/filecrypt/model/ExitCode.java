@@ -2,6 +2,8 @@ package com.exploids.filecrypt.model;
 
 /**
  * All exit codes produced by filecrypt.
+ *
+ * @author Luca Selinski
  */
 public enum ExitCode {
     /**
@@ -13,11 +15,6 @@ public enum ExitCode {
      * A generic failure.
      */
     FAILURE(1),
-
-    /**
-     * A failure caused by wrong usage by the user.
-     */
-    USAGE(2),
 
     /**
      * Some parameters would cause insecure encryption and insecure encryption is not explicitly allowed.

@@ -1,6 +1,6 @@
 package com.exploids.filecrypt;
 
-import com.exploids.filecrypt.exception.InsecureException;
+import com.exploids.filecrypt.model.Algorithm;
 import com.exploids.filecrypt.model.BlockMode;
 import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Padding;
@@ -22,9 +22,9 @@ public class SecurityCheck {
      */
     public Set<Concern> check(Metadata metadata) {
         var concerns = EnumSet.noneOf(Concern.class);
-//        if (metadata.getCipherAlgorithm() != Algorithm.AES) {
-//            concerns.add(Concern.ALGORITHM);
-//        }
+        if (metadata.getCipherAlgorithm() == Algorithm.ARC4) {
+            concerns.add(Concern.ALGORITHM);
+        }
         if (metadata.getBlockMode() == BlockMode.ECB) {
             concerns.add(Concern.BLOCK_MODE);
         }
@@ -32,19 +32,6 @@ public class SecurityCheck {
             concerns.add(Concern.PADDING);
         }
         return concerns;
-    }
-
-    /**
-     * Checks the given parameters.
-     *
-     * @param metadata the parameters to check
-     * @throws InsecureException if there are security concerns
-     */
-    public void checkAndThrow(Metadata metadata) throws InsecureException {
-        var concerns = check(metadata);
-        if (!concerns.isEmpty()) {
-            throw new InsecureException(concerns);
-        }
     }
 
     /**

@@ -39,10 +39,23 @@ public enum Padding {
     /**
      * Zero byte padding.
      */
-    ZERO_BYTE("ZeroBytePadding");
+    ZERO_BYTE("ZeroBytePadding"),
 
+    /**
+     * Cipher text stealing.
+     */
+    CTS("CTSPadding");
+
+    /**
+     * The bouncy castle padding name.
+     */
     private final String algorithmName;
 
+    /**
+     * Creates a new enum constant.
+     *
+     * @param algorithmName the bouncy castle padding name
+     */
     Padding(String algorithmName) {
         this.algorithmName = algorithmName;
     }
@@ -52,7 +65,7 @@ public enum Padding {
      *
      * @return the name
      */
-    public String getAlgorithmName() {
+    public String getPaddingName() {
         return algorithmName;
     }
 }

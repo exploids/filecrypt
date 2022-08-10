@@ -24,7 +24,7 @@ public class Metadata {
     /**
      * Creates metadata from the given values.
      *
-     * @param cipherAlgorithm            the algorithm
+     * @param cipherAlgorithm      the algorithm
      * @param blockMode            the block mode
      * @param padding              the padding
      * @param initializationVector the iv
@@ -111,7 +111,7 @@ public class Metadata {
     /**
      * The signature.
      */
-    @Option(names = {"--signature"}, arity = "0..1", converter = Base64ByteBufferConverter.class)
+    @Option(names = {"-s", "--signature"}, arity = "0..1", converter = Base64ByteBufferConverter.class)
     private ByteBuffer signature;
 
     /**
@@ -192,44 +192,94 @@ public class Metadata {
         this.keySize = keySize;
     }
 
+    /**
+     * Gets the algorithm for the password.
+     *
+     * @return the algorithm for the password
+     */
     public PasswordAlgorithm getPasswordAlgorithm() {
         return passwordAlgorithm;
     }
 
+    /**
+     * Sets the algorithm for the password.
+     *
+     * @param passwordAlgorithm the algorithm for the password
+     */
     public void setPasswordAlgorithm(PasswordAlgorithm passwordAlgorithm) {
         this.passwordAlgorithm = passwordAlgorithm;
     }
 
+    /**
+     * Gets the salt for the password.
+     *
+     * @return the salt for the password
+     */
     @JsonSerialize(using = ByteBufferSerializer.class)
     public ByteBuffer getPasswordSalt() {
         return passwordSalt;
     }
 
+    /**
+     * Sets the salt for the password.
+     *
+     * @param passwordSalt the salt for the password
+     */
     @JsonDeserialize(using = ByteBufferDeserializer.class)
     public void setPasswordSalt(ByteBuffer passwordSalt) {
         this.passwordSalt = passwordSalt;
     }
 
+    /**
+     * Gets the cost parameter for the password.
+     *
+     * @return the cost parameter for the password
+     */
     public Integer getPasswordCost() {
         return passwordCost;
     }
 
+    /**
+     * Sets the cost parameter for the password.
+     *
+     * @param passwordCost the cost parameter for the password
+     */
     public void setPasswordCost(Integer passwordCost) {
         this.passwordCost = passwordCost;
     }
 
+    /**
+     * Gets the block size for the password.
+     *
+     * @return the block size for the password
+     */
     public Integer getPasswordBlockSize() {
         return passwordBlockSize;
     }
 
+    /**
+     * Sets the block size for the password.
+     *
+     * @param passwordBlockSize the block size for the password
+     */
     public void setPasswordBlockSize(Integer passwordBlockSize) {
         this.passwordBlockSize = passwordBlockSize;
     }
 
+    /**
+     * Gets the parallelization parameter for the password.
+     *
+     * @return the parallelization parameter for the password
+     */
     public Integer getPasswordParallelization() {
         return passwordParallelization;
     }
 
+    /**
+     * Sets the parallelization parameter for the password.
+     *
+     * @param passwordParallelization the parallelization parameter for the password
+     */
     public void setPasswordParallelization(Integer passwordParallelization) {
         this.passwordParallelization = passwordParallelization;
     }
