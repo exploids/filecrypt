@@ -16,6 +16,7 @@ import com.exploids.filecrypt.model.PasswordAlgorithm;
 import com.exploids.filecrypt.serialization.HexByteBufferConverter;
 import com.exploids.filecrypt.serialization.SpacedNamingStrategy;
 import com.exploids.filecrypt.step.CipherStep;
+import com.exploids.filecrypt.step.SaveDataStep;
 import com.exploids.filecrypt.step.SignatureStep;
 import com.exploids.filecrypt.step.VerificationStep;
 import com.exploids.filecrypt.utility.DataTransfer;
@@ -34,6 +35,7 @@ import picocli.CommandLine.ArgGroup;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.SecretKey;
@@ -140,6 +142,9 @@ public class FileCrypt implements Callable<Integer> {
             if (e.getMessage().equals("no IV set when one expected")) {
                 logger.error("An IV is required, but was not provided. Did you select the correct metadata file?");
                 return ExitCode.FAILURE;
+            } else if (e.getMessage().startsWith("Key for algorithm null not suitable")) {
+                logger.error("No key or password given, even though one was required. Did you select the correct key file? Did you forget to enter a password?");
+                return ExitCode.KEY_ERROR;
             } else if (e.getMessage().startsWith("Key length not ")) {
                 logger.error("The key size {} cannot be used with the {} cipher.", metadata.getKeySize(), metadata.getCipherAlgorithm());
                 return ExitCode.KEY_ERROR;
@@ -154,8 +159,10 @@ public class FileCrypt implements Callable<Integer> {
                 } else {
                     logger.error("An illegal block size has been encountered.", e);
                 }
+            } else if (e.getCause() instanceof BadPaddingException) {
+                logger.error("Failed to decrypt the file. Did you specify the correct key or password?");
             } else {
-                logger.error("Failed to decrypt the file due to invalid cipher text. Did you specify the correct key or password?", e);
+                logger.error("Failed to decrypt the file. Did you specify the correct key or password?", e);
             }
             return ExitCode.FAILURE;
         } catch (NoSuchFileException e) {
@@ -198,6 +205,7 @@ public class FileCrypt implements Callable<Integer> {
         var file = parameters.getFile();
         var output = parameters.getOutput();
         var steps = new ArrayList<>(List.of(
+                new SaveDataStep(),
                 new SignatureStep(),
                 new CipherStep(),
                 new VerificationStep()

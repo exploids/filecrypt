@@ -4,8 +4,6 @@ import com.exploids.filecrypt.SecurityCheck;
 import com.exploids.filecrypt.exception.InsecureException;
 import com.exploids.filecrypt.model.Metadata;
 import com.exploids.filecrypt.model.Parameters;
-import com.exploids.filecrypt.utility.FileCleanup;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.bouncycastle.jcajce.io.CipherOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
@@ -73,28 +70,5 @@ public class CipherEncryptAction extends BasicAction {
         cipher.init(Cipher.ENCRYPT_MODE, key);
         logger.debug("Initialized cipher");
         return new CipherOutputStream(stream, cipher);
-    }
-
-    @Override
-    public void end(ObjectMapper mapper, FileCleanup cleanup) throws IOException {
-        logger.debug("Encoding metadata.");
-        var iv = cipher.getIV();
-        if (iv != null) {
-            metadata.setInitializationVector(ByteBuffer.wrap(iv));
-        }
-        try (var metadataOut = cleanup.newBufferedWriter(parameters.getMetadataFile())) {
-            mapper.writeValue(metadataOut, metadata);
-        }
-        logger.debug("Wrote metadata to {}.", parameters.getMetadataFile().toAbsolutePath());
-        var keyData = parameters.getKeyData();
-        if (keyData.getCipherKey() != null || keyData.getVerificationKey() != null) {
-            logger.debug("Encoding key.");
-            try (var keyOut = cleanup.newBufferedWriter(parameters.getKeyFile())) {
-                mapper.writeValue(keyOut, parameters.getKeyData());
-            }
-            logger.debug("Wrote key data to {}.", parameters.getKeyFile().toAbsolutePath());
-        } else {
-            logger.debug("No key data to write.");
-        }
     }
 }
