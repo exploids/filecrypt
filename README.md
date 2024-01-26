@@ -1,6 +1,7 @@
 # filecrypt
 
 A tool to encrypt and decrypt files.
+This project has been developed as part of a module at my university.
 
 ```shell
 filecrypt --help
